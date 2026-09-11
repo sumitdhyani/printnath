@@ -5,5 +5,8 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/channels/data-db"]
+  "include": ["src/channels/data-db"],
+  "references": [
+    { "path": "../shared" }
+  ]
 }

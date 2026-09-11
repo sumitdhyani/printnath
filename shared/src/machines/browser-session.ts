@@ -13,7 +13,7 @@ export const browserSessionMachine = createMachine({
   id: 'browserSession',
   initial: 'LANDING',
   context: {
-    mode: 'ANONYMOUS' as const,
+    mode: 'ANONYMOUS' as 'ANONYMOUS' | 'OTP_AUTHENTICATED',
     sessionToken: '',
     errorMessage: undefined as string | undefined,
   },

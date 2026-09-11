@@ -7,50 +7,39 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Customer {
-  id          String   @id @default(uuid())
-  phone       String   @unique
-  whatsappId  String?  @unique
+// ── Device owner (shopkeeper, hostel warden, etc.) ──
+
+model Owner {
+  phone       String    @id               // E.164, primary identifier
   displayName String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  documents   Document[]
-  sessions    CustomerSession[]
-  printJobs   PrintJob[]
-  payments    Payment[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  gateways    Gateway[]
+  pricings    Pricing[]
 }
 
-model Shop {
-  id           String   @id @default(uuid())
-  name         String
-  code         String   @unique
-  address      String?
-  contactPhone String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  gateways     Gateway[]
-  pricings     Pricing[]
-  sessions     CustomerSession[]
-  printJobs    PrintJob[]
-}
+// ── Gateway device ──
 
 model Gateway {
   id             String    @id @default(uuid())
   deviceId       String    @unique
-  shopId         String?
-  shop           Shop?     @relation(fields: [shopId], references: [id])
+  ownerPhone     String?
+  owner          Owner?    @relation(fields: [ownerPhone], references: [phone])
+  name           String?              // "Main St Print Shop"
+  locationDesc   String?              // "Near City Mall, Delhi"
   softwareVer    String?
   lifecycleState String    @default("PRE_ACTIVATION")
-  activationCode String?
-  activatedAt    DateTime?
+  deviceToken    String?              // Issued after activation
   lastHeartbeat  DateTime?
   isConnected    Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   printers       Printer[]
+  sessions       CustomerSession[]
   printJobs      PrintJob[]
 }
+
+// ── Printer attached to gateway ──
 
 model Printer {
   id             String   @id @default(uuid())
@@ -69,46 +58,31 @@ model Printer {
   @@unique([gatewayId, name])
 }
 
+// ── Owner pricing (linked to owner phone, not gateway) ──
+
 model Pricing {
   id         String   @id @default(uuid())
-  shopId     String
-  shop       Shop     @relation(fields: [shopId], references: [id])
-  pageType   String
+  ownerPhone String
+  owner      Owner    @relation(fields: [ownerPhone], references: [phone])
+  pageType   String               // B_W_A4 | COLOR_A4 | B_W_A3 | COLOR_A3
   pricePaise Int
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  @@unique([shopId, pageType])
+  @@unique([ownerPhone, pageType])
 }
 
-model Document {
-  id           String   @id @default(uuid())
-  customerId   String?
-  customer     Customer? @relation(fields: [customerId], references: [id])
-  originalName String
-  mimeType     String
-  fileSize     BigInt
-  pageCount    Int?
-  storageKey   String
-  source       String
-  sessionToken String?
-  expiresAt    DateTime?
-  createdAt    DateTime @default(now())
-  jobDocuments JobDocument[]
-}
+// ── Customer session (browser flow) ──
 
 model CustomerSession {
   id           String    @id @default(uuid())
-  shopId       String
-  shop         Shop      @relation(fields: [shopId], references: [id])
-  customerId   String?
-  customer     Customer? @relation(fields: [customerId], references: [id])
+  gatewayId    String
+  gateway      Gateway   @relation(fields: [gatewayId], references: [id])
   sessionToken String    @unique
   state        String    @default("LANDING")
   mode         String    @default("ANONYMOUS")
-  phone        String?   // phone number, stored for OTP flow
-  authMethod   String?
+  phone        String?              // Customer phone for OTP auth
   otpHash      String?
   otpExpiresAt DateTime?
   otpAttempts  Int       @default(0)
@@ -119,15 +93,30 @@ model CustomerSession {
   printJobs    PrintJob[]
 }
 
+// ── Customer-submitted document ──
+
+model Document {
+  id           String   @id @default(uuid())
+  sessionToken String
+  originalName String
+  mimeType     String
+  fileSize     BigInt
+  pageCount    Int?
+  storageKey   String
+  source       String               // WHATSAPP | DIRECT_UPLOAD
+  fileHash     String?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  jobDocuments JobDocument[]
+}
+
+// ── Print job lifecycle ──
+
 model PrintJob {
   id               String   @id @default(uuid())
   jobNumber        String   @unique
-  shopId           String
-  shop             Shop     @relation(fields: [shopId], references: [id])
   gatewayId        String?
   gateway          Gateway? @relation(fields: [gatewayId], references: [id])
-  customerId       String?
-  customer         Customer? @relation(fields: [customerId], references: [id])
   sessionId        String?
   session          CustomerSession? @relation(fields: [sessionId], references: [id])
   state            String   @default("CREATED")
@@ -135,7 +124,6 @@ model PrintJob {
   totalPages       Int
   pricePaise       Int
   platformFeePaise Int      @default(0)
-  shopEarningsPaise Int?
   artifactKey      String?
   errorReason      String?
   retryCount       Int      @default(0)
@@ -145,6 +133,8 @@ model PrintJob {
   payments         Payment[]
   jobDocuments     JobDocument[]
 }
+
+// ── Job-document join ──
 
 model JobDocument {
   jobId      String
@@ -156,12 +146,12 @@ model JobDocument {
   @@id([jobId, documentId])
 }
 
+// ── Payments ──
+
 model Payment {
   id            String    @id @default(uuid())
   jobId         String
   job           PrintJob  @relation(fields: [jobId], references: [id])
-  customerId    String?
-  customer      Customer? @relation(fields: [customerId], references: [id])
   amountPaise   Int
   currency      String    @default("INR")
   provider      String
@@ -174,6 +164,8 @@ model Payment {
 
   @@unique([provider, providerRef])
 }
+
+// ── Immutable audit log ──
 
 model AuditLog {
   id         BigInt   @id @default(autoincrement())
