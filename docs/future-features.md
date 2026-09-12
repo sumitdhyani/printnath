@@ -2,6 +2,30 @@
 
 Features deferred from v1. Ordered by estimated priority.
 
+## 0. Billing Modes
+
+**Description:** Support multiple billing scenarios beyond per-job payment. Single schema with configurable `billingMode` on Gateway. Payer is always either end customer or gateway owner.
+
+**Target billing modes:**
+
+| Mode | Who pays | When | Use case |
+|---|---|---|---|
+| `PAY_PER_JOB` | End customer | Each print | Shop walk-in (v1 default) |
+| `PREPAID_OWNER` | Owner | Preloaded | Hostel, coworking |
+| `PREPAID_CUSTOMER` | End customer | Preloaded | Frequent customer |
+| `INVOICE_OWNER` | Owner | End of month | Office, institution |
+
+**Schema addition:**
+```prisma
+model Gateway {
+  billingMode BillingMode @default(PAY_PER_JOB)
+}
+```
+
+**No new tables for payment.** Payment flow varies by mode but reuses existing tables. UI varies based on `Gateway.billingMode`. See also Owner Preload and Customer Preload features.
+
+**Migration:** Add `billingMode` column to Gateway with default `PAY_PER_JOB`. Zero impact on existing records.
+
 ## 1. Per-Print-Type Commission
 
 **Description:** Platform commission calculated per print type (color/BW, A4/A3, duplex/single) rather than flat fee per job.
