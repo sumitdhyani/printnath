@@ -31,32 +31,14 @@ model Gateway {
   lifecycleState String    @default("PRE_ACTIVATION")
   deviceToken    String?              // Issued after activation
   lastHeartbeat  DateTime?
+  capabilities   Json?
   isConnected    Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  printers       Printer[]
   sessions       CustomerSession[]
   printJobs      PrintJob[]
 }
 
-// ── Printer attached to gateway ──
-
-model Printer {
-  id             String   @id @default(uuid())
-  gatewayId      String
-  gateway        Gateway  @relation(fields: [gatewayId], references: [id])
-  name           String
-  type           String?
-  state          String   @default("UNKNOWN")
-  capabilities   Json?
-  supportsColor  Boolean  @default(false)
-  supportsDuplex Boolean  @default(false)
-  supportsA3     Boolean  @default(false)
-  reportedAt     DateTime?
-  createdAt      DateTime @default(now())
-
-  @@unique([gatewayId, name])
-}
 
 // ── Owner pricing (linked to owner phone, not gateway) ──
 
@@ -120,8 +102,7 @@ model PrintJob {
   sessionId        String?
   session          CustomerSession? @relation(fields: [sessionId], references: [id])
   state            String   @default("CREATED")
-  requirements     Json
-  totalPages       Int
+  totalPages       Int       // Σ(jobDocument.pageCount × jobDocument.copies)
   pricePaise       Int
   platformFeePaise Int      @default(0)
   artifactKey      String?
@@ -134,14 +115,19 @@ model PrintJob {
   jobDocuments     JobDocument[]
 }
 
-// ── Job-document join ──
+// ── Job-document join (per-document config) ──
 
 model JobDocument {
   jobId      String
   documentId String
-  pageCount  Int
-  job        PrintJob  @relation(fields: [jobId], references: [id])
-  document   Document  @relation(fields: [documentId], references: [id])
+  pageCount  Int        // pages in this document
+  copies     Int        @default(1)
+  color      Boolean    @default(false)
+  duplex     Boolean    @default(false)
+  paperSize  String     @default("A4")
+  pricePaise Int        // total: pageCount × copies × pricing rate
+  job        PrintJob   @relation(fields: [jobId], references: [id])
+  document   Document   @relation(fields: [documentId], references: [id])
 
   @@id([jobId, documentId])
 }

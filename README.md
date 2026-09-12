@@ -52,6 +52,12 @@ docker compose -f deploy/docker-compose.yml up -d
 npm start -w server
 ```
 
+## Data Consistency
+
+v1 uses channel-based architecture — each DB operation is a single Prisma call. Some cross-entity consistency (e.g., payment → job state) must be maintained by the routing layer.
+
+See [Data Consistency Notes](docs/data-consistency-notes.md) for known limitations, failure scenarios, and future improvements.
+
 ## Project Structure
 
 ```
