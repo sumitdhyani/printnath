@@ -39,7 +39,7 @@ No touchscreen kiosk required. The customer's phone is the UI.
 ## Quick Start
 
 ```sh
-# Install
+# Install dependencies (one-time, repeat after pulling new changes)
 npm install
 
 # Build all packages (use -b for project references)
@@ -51,6 +51,8 @@ docker compose -f deploy/docker-compose.yml up -d
 # Run server
 npm start -w server
 ```
+
+> **Note:** Always use `npx tsc -b` from root, not `npx tsc`. Build mode (`-b`) follows project references and rebuilds dependencies in order.
 
 > **Note:** Always use `npx tsc -b` from root, not `npx tsc`. Build mode (`-b`) follows project references and rebuilds dependencies in order.
 
@@ -68,7 +70,8 @@ See [Data Consistency Notes](docs/data-consistency-notes.md) for known limitatio
 
 ### Prerequisites
 
-PostgreSQL must be running:
+1. Install dependencies (one-time): `npm install`
+2. PostgreSQL must be running:
 ```sh
 docker compose -f deploy/docker-compose.yml up -d postgres
 ```
