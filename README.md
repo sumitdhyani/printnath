@@ -42,6 +42,9 @@ No touchscreen kiosk required. The customer's phone is the UI.
 # Install dependencies (one-time, repeat after pulling new changes)
 npm install
 
+# Generate Prisma client
+cd server && npx prisma generate && cd ..
+
 # Build all packages (use -b for project references)
 npx tsc -b
 
@@ -71,7 +74,8 @@ See [Data Consistency Notes](docs/data-consistency-notes.md) for known limitatio
 ### Prerequisites
 
 1. Install dependencies (one-time): `npm install`
-2. PostgreSQL must be running:
+2. Generate Prisma client: `cd server && npx prisma generate && cd ..`
+3. PostgreSQL must be running:
 ```sh
 docker compose -f deploy/docker-compose.yml up -d postgres
 ```

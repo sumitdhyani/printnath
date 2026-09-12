@@ -12,6 +12,10 @@ globalThis.__TEST_DB_URL__ = TEST_DB_URL;
 let prisma: PrismaClient;
 
 beforeAll(async () => {
+  // Ensure Prisma client is generated
+  const serverDir = path.resolve(__dirname, '..', 'server');
+  execSync('npx prisma generate', { cwd: serverDir, stdio: 'pipe' });
+
   // Check DB reachable
   const checkClient = new PrismaClient({ datasourceUrl: MAIN_DB_URL });
   try {
