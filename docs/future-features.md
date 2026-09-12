@@ -2,7 +2,26 @@
 
 Features deferred from v1. Ordered by estimated priority.
 
-## 0. Billing Modes
+## 0. Email as Primary Owner Identifier
+
+**Description:** Replace phone with email as the primary key for `Owner` table. Email is more stable across role/personnel changes (e.g., a public office's official email stays the same when the head of office changes).
+
+**Migration difficulty:** Easy. No manual steps. Prisma generates migration SQL. Single backfill step copies phone to email temporarily.
+
+**Schema change:**
+```prisma
+model Owner {
+  email String  @id
+  phone String?
+  // ... rest same
+}
+```
+
+**Steps:** Add email column → backfill email from phone → drop old PK → set email as new PK → update FK references on Gateway and Pricing. See data_consistency_notes.md for FK chain details.
+
+**Backward compatibility:** Phone remains as a regular field (not PK) for customer-facing search.
+
+## 1. Billing Modes
 
 **Description:** Support multiple billing scenarios beyond per-job payment. Single schema with configurable `billingMode` on Gateway. Payer is always either end customer or gateway owner.
 
