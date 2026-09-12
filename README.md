@@ -42,7 +42,7 @@ No touchscreen kiosk required. The customer's phone is the UI.
 # Install
 npm install
 
-# Build all packages
+# Build all packages (use -b for project references)
 npx tsc -b
 
 # Start DB + MinIO
@@ -52,11 +52,55 @@ docker compose -f deploy/docker-compose.yml up -d
 npm start -w server
 ```
 
+> **Note:** Always use `npx tsc -b` from root, not `npx tsc`. Build mode (`-b`) follows project references and rebuilds dependencies in order.
+
+## Future Features
+
+See [Future Features](docs/future-features.md) for planned additions: per-print-type commission, owner/customer preload balance, Methods 2 & 3, touchscreen kiosk mode.
+
 ## Data Consistency
 
 v1 uses channel-based architecture — each DB operation is a single Prisma call. Some cross-entity consistency (e.g., payment → job state) must be maintained by the routing layer.
 
 See [Data Consistency Notes](docs/data-consistency-notes.md) for known limitations, failure scenarios, and future improvements.
+
+## Running Tests
+
+### Prerequisites
+
+PostgreSQL must be running:
+```sh
+docker compose -f deploy/docker-compose.yml up -d postgres
+```
+
+### Channel integration tests
+
+Tests run against a real PostgreSQL database (`printnath_test`). Setup creates it and runs migrations automatically.
+
+**Run all channel tests:**
+```sh
+npx vitest run --config channel-tests/vitest.config.ts
+```
+
+**Run a single channel (all tests in that channel directory):**
+```sh
+npx vitest run --config channel-tests/vitest.config.ts channel-tests/data-db
+```
+
+**Run a single test file:**
+```sh
+npx vitest run --config channel-tests/vitest.config.ts channel-tests/data-db/data-db.test.ts
+```
+
+**Run a specific test suite (by name):**
+```sh
+npx vitest run --config channel-tests/vitest.config.ts -t "Owner"
+```
+
+**Watch mode (re-run on file changes):**
+```sh
+npx vitest --config channel-tests/vitest.config.ts
+```
 
 ## Project Structure
 
