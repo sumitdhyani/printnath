@@ -41,8 +41,8 @@ beforeAll(async () => {
   }
   await setupClient.$disconnect();
 
-  // Run migrations on test DB
-  execSync(`DATABASE_URL="${TEST_DB_URL}" npx prisma migrate deploy`, {
+  // Apply schema to test DB (db push = no migration files needed)
+  execSync(`DATABASE_URL="${TEST_DB_URL}" npx prisma db push --force-reset`, {
     cwd: path.resolve(__dirname, '..', 'server'),
     stdio: 'pipe',
   });

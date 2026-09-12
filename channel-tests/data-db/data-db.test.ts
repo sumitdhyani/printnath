@@ -241,6 +241,7 @@ describe('PrintJob', () => {
   const DEVICE_ID = 'job-device';
   let gatewayId: string;
   let sessionId: string;
+  let documentId: string;
 
   beforeEach(async () => {
     await channel.execute({ method: Methods.PreRegisterDevice, args: { deviceId: DEVICE_ID } });
@@ -249,8 +250,8 @@ describe('PrintJob', () => {
       args: { deviceId: DEVICE_ID, lifecycleState: 'OPERATIONAL' },
     });
     const gw = await channel.execute({ method: Methods.GetGatewayByDeviceId, args: { deviceId: DEVICE_ID } });
-    if (!gw.ok) return;
-    gatewayId = gw.data!.id;
+    if (!gw.ok || !gw.data) throw new Error('Gateway not found');
+    gatewayId = gw.data.id;
 
     const sess = await channel.execute({
       method: Methods.CreateSession,
@@ -261,8 +262,24 @@ describe('PrintJob', () => {
         expiresAt: new Date(Date.now() + 3600000),
       },
     });
-    if (!sess.ok) return;
+    if (!sess.ok) throw new Error('Session not created');
     sessionId = (sess.data as any).id;
+
+    // Create document for JobDocument FK reference
+    const doc = await channel.execute({
+      method: Methods.CreateDocument,
+      args: {
+        sessionToken: `tok-${Date.now()}`,
+        originalName: 'test.pdf',
+        mimeType: 'application/pdf',
+        storageKey: 'test/test.pdf',
+        source: 'DIRECT_UPLOAD',
+        fileSize: 1024,
+        pageCount: 4,
+      },
+    });
+    if (!doc.ok) throw new Error('Document not created');
+    documentId = (doc.data as any).id;
   });
 
   test('create print job with nested documents', async () => {
@@ -274,17 +291,7 @@ describe('PrintJob', () => {
         sessionId,
         totalPages: 12,
         pricePaise: 3600,
-        documents: [
-          {
-            documentId: 'doc-1',
-            pageCount: 4,
-            copies: 2,
-            color: false,
-            duplex: true,
-            paperSize: 'A4',
-            pricePaise: 2400,
-          },
-        ],
+        documents: [{ documentId, pageCount: 4, copies: 2, color: false, duplex: true, paperSize: 'A4', pricePaise: 2400 }],
       },
     });
     expect(result.ok).toBe(true);
@@ -294,7 +301,6 @@ describe('PrintJob', () => {
 
   test('get print job with includeDocuments', async () => {
     const jobNum = `JOB-${Date.now()}`;
-
     const createResult = await channel.execute({
       method: Methods.CreatePrintJob,
       args: {
@@ -303,36 +309,19 @@ describe('PrintJob', () => {
         sessionId,
         totalPages: 12,
         pricePaise: 3600,
-        documents: [
-          {
-            documentId: 'doc-a',
-            pageCount: 4,
-            copies: 1,
-            color: false,
-            duplex: true,
-            paperSize: 'A4',
-            pricePaise: 1200,
-          },
-        ],
+        documents: [{ documentId, pageCount: 4, copies: 1, color: false, duplex: true, paperSize: 'A4', pricePaise: 1200 }],
       },
     });
+    expect(createResult.ok).toBe(true);
     if (!createResult.ok) return;
     const jobId = (createResult.data as any).id;
 
-    // Without documents
-    const resultWithout = await channel.execute({
-      method: Methods.GetPrintJob,
-      args: { id: jobId },
-    });
+    const resultWithout = await channel.execute({ method: Methods.GetPrintJob, args: { id: jobId } });
     expect(resultWithout.ok).toBe(true);
     if (!resultWithout.ok) return;
-    expect(resultWithout.data?.jobDocuments).toBeUndefined();
+    expect((resultWithout.data as any).jobDocuments).toBeUndefined();
 
-    // With documents
-    const resultWith = await channel.execute({
-      method: Methods.GetPrintJob,
-      args: { id: jobId, includeDocuments: true },
-    });
+    const resultWith = await channel.execute({ method: Methods.GetPrintJob, args: { id: jobId, includeDocuments: true } });
     expect(resultWith.ok).toBe(true);
     if (!resultWith.ok) return;
     expect(resultWith.data?.jobDocuments).toHaveLength(1);
