@@ -67,12 +67,14 @@ export type HelloResponse = {
 // ── WebSocket message types ──
 
 export type WsMessageType =
+  // From server channel
   | 'HEARTBEAT'
   | 'CAPABILITY_QUERY'
-  | 'CAPABILITY_RESPONSE'
   | 'PRINT_PREFLIGHT'
-  | 'PRINT_PREFLIGHT_RESPONSE'
   | 'PRINT_JOB'
+  // From gwteway device
+  | 'CAPABILITY_RESPONSE'
+  | 'PRINT_PREFLIGHT_RESPONSE'
   | 'JOB_ACCEPTED'
   | 'JOB_STATUS';
 
