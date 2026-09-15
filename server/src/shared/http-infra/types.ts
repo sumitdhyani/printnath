@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 export type ConnectionId = string;
 export type ConnectionObject = { readonly id: ConnectionId };
 
@@ -14,7 +16,7 @@ export type HttpRequest = {
 export type HttpResponse = {
   readonly status: number;
   readonly headers: HttpHeaders;
-  readonly body: string | Buffer;
+  readonly body: string | Buffer | Readable;
 };
 
 // Functions provided by the init method

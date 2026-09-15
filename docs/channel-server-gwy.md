@@ -2,18 +2,19 @@
 
 ## Role
 
-Manages server-side communication with physical gateway devices. Owns the HTTP HELLO endpoint and WebSocket connections. Dispatches print jobs, queries capabilities, handles reconnection.
+Manages server-side communication with physical gateway devices. Owns the HTTP HELLO and artifact download endpoints and WebSocket connections. Dispatches preflight checks and print jobs, caches printer capabilities, handles reconnection.
 
 ## Contract
 
 ### Type overview
 
-| Type | Direction | Description | Methods |
+| Type | Direction | Description | Methods / Events |
 |---|---|---|---|
-| `In_Req` | Router → Gateway channel | Router requests channel to act | dispatchPrintJob, dispatchPreflight, cancelJob, getConnectionStatus |
-| `Out_Req` | Gateway channel → Router | Channel requests router to act | gatewayHello, jobStatusUpdate, capabilityReport |
-| `Out_Us` | Gateway channel → Router | Channel sends unsolicited event | GW_CONNECTED, GW_DISCONNECTED, GW_CHANNEL_READY, GW_ERROR |
+| `In_Req` | Router → Gateway channel | Router requests channel to act | RequestPreFlight, RequestPrint, GetPrinterCapabilities |
 | `Out_Resp` | Gateway channel → Router | Channel responds to In_Req | ok/error envelope |
+| `Out_Req` | Gateway channel → Router | Channel requests router to act | RequestDeviceDetails, ValidateArtifactToken |
+| `In_Resp` | Router → Gateway channel | Router responds to Out_Req | device details, token validation result |
+| `Out_Us` | Gateway channel → Router | Channel sends unsolicited event | GW_CHANNEL_READY, GW_CONNECTED, GW_DISCONNECTED, GW_ERROR, JOB_STATUS_UPDATE |
 
 ---
 
@@ -22,17 +23,17 @@ Manages server-side communication with physical gateway devices. Owns the HTTP H
 ```ts
 type GatewayDeps = {
   config: {
-    wsPort: number;           // WebSocket server port
-    heartbeatTimeoutMs: number; // disconnect if no heartbeat within this
+    httpPort: number;    // HTTP server port (HELLO + artifact download)
+    wsPath: string;      // WebSocket path (e.g. /ws/gateway)
   };
-  sendToRouter: (event: GatewayOut_Req | GatewayOut_Pub) => Promise<void>;
-  dataDb: {
-    execute: (req: DataDbIn_Req) => Promise<DataDbOut_Resp>;
+  sendToRouter: (event: Out_Req | Out_Us) => Promise<In_Resp | void>;
+  docStore: {
+    getArtifactStream: (jobId: string) => Promise<{ stream: Readable; contentType: string; contentLength?: number } | null>;
   };
 };
 
 type GatewayChannel = {
-  execute(req: GatewayIn_Req): Promise<GatewayOut_Resp>;
+  execute(req: In_Req): Promise<Out_Resp>;
   stop(): Promise<void>;
 };
 ```
@@ -41,12 +42,9 @@ type GatewayChannel = {
 
 | Method | Args | Description |
 |---|---|---|
-| `dispatchPrintJob` | `{ deviceId, jobId, artifactUrl, authToken, requirements[] }` | Send PRINT_JOB to gateway |
-| `dispatchPreflight` | `{ deviceId, jobId, requirements[] }` | Send PRINT_PREFLIGHT to gateway |
-| `cancelJob` | `{ deviceId, jobId, reason }` | Send CANCEL_JOB to gateway |
-| `getConnectionStatus` | `{ deviceId }` | Check if gateway connected |
-| `ping` | `{}` | Health check |
-| `stop` | `{}` | Shutdown |
+| `RequestPreFlight` | `{ deviceId, jobId, documents[] }` | Send PRINT_PREFLIGHT to gateway, wait for response. Returns `ok: true` if can fulfill, `ok: false` with reason if rejected |
+| `RequestPrint` | `{ deviceId, jobId, artifactUrl, authToken, documents[] }` | Send PRINT_JOB to gateway, wait for JOB_ACCEPTED. Returns `ok: true` on acceptance |
+| `GetPrinterCapabilities` | `{ deviceId }` | Return cached printer capabilities (from last CAPABILITY_RESPONSE) |
 
 ---
 
@@ -54,9 +52,8 @@ type GatewayChannel = {
 
 | Method | Args | Description |
 |---|---|---|
-| `gatewayHello` | `{ deviceId, softwareVersion, remoteAddr }` | Gateway sent HELLO, router should update state |
-| `jobStatusUpdate` | `{ deviceId, jobId, status, reason? }` | Gateway reported JOB_STATUS, router should update DB |
-| `capabilityReport` | `{ deviceId, printers }` | Gateway sent CAPABILITY_RESPONSE, router should store |
+| `RequestDeviceDetails` | `{ deviceId }` | HTTP HELLO received — router returns device lifecycle state + token |
+| `ValidateArtifactToken` | `{ jobId, authToken }` | Gateway requests artifact — router validates job-specific token |
 
 ---
 
@@ -68,42 +65,7 @@ type GatewayChannel = {
 | `GW_CONNECTED` | `{ deviceId }` | Gateway WebSocket established |
 | `GW_DISCONNECTED` | `{ deviceId }` | Gateway WebSocket lost |
 | `GW_ERROR` | `{ deviceId, error }` | Gateway communication error |
-
----
-
-### Incoming requests (Router → Gateway Channel)
-
-| Method | Args | Description |
-|---|---|---|
-| `dispatchPrintJob` | `{ deviceId, jobId, artifactUrl, authToken, requirements }` | Send PRINT_JOB to gateway |
-| `dispatchPreflight` | `{ deviceId, jobId, requirements[] }` | Send PRINT_PREFLIGHT to gateway |
-| `cancelJob` | `{ deviceId, jobId, reason }` | Send CANCEL_JOB to gateway |
-| `getConnectionStatus` | `{ deviceId }` | Check if gateway is connected |
-| `ping` | `{}` | Health check |
-| `stop` | `{}` | Shutdown WS server |
-
-### Outgoing requests (Gateway Channel → Router)
-
-These are requests the gateway channel makes to the router (which forwards to other channels).
-
-```ts
-type GatewayOut_Req =
-  | { method: 'gatewayHello'; args: { deviceId: string; softwareVersion: string; remoteAddr: string } }
-  | { method: 'jobStatusUpdate'; args: { deviceId: string; jobId: string; status: string; reason?: string } }
-  | { method: 'capabilityReport'; args: { deviceId: string; printers: PrinterInfo[] } };
-```
-
-### Publications (Gateway Channel → Router)
-
-Unsolicited events from gateways.
-
-```ts
-type GatewayOut_Pub =
-  | { event: 'GW_CHANNEL_READY'; payload: { wsPort: number } }
-  | { event: 'GW_CONNECTED'; payload: { deviceId: string } }
-  | { event: 'GW_DISCONNECTED'; payload: { deviceId: string } }
-  | { event: 'GW_ERROR'; payload: { deviceId: string; error: string } };
-```
+| `JOB_STATUS_UPDATE` | `{ deviceId, jobId, status, reason? }` | Gateway reported async job status (QUEUED / PRINTING / COMPLETED / FAILED) |
 
 ---
 
@@ -184,7 +146,6 @@ Server validates `deviceToken` before accepting. Once connected:
 | Server → Gateway | `PRINT_JOB` | `{ jobId, artifactUrl, authToken, requirements }` | Authorized job |
 | Gateway → Server | `JOB_ACCEPTED` | `{ jobId }` | Gateway takes responsibility |
 | Gateway → Server | `JOB_STATUS` | `{ jobId, status, reason? }` | QUEUED / PRINTING / COMPLETED / FAILED |
-| Server → Gateway | `CANCEL_JOB` | `{ jobId, reason }` | Cancel request |
 
 ### Message format
 
@@ -220,14 +181,14 @@ GET /api/gateway/jobs/{jobId}/artifact
 Authorization: Bearer <job-specific-token>
 ```
 
-Server returns the merged print-ready PDF. The token is short-lived and specific to the job.
+Server streams the merged print-ready PDF. The token is short-lived and specific to the job, validated via `Out_Req.ValidateArtifactToken`. The file is streamed from doc store — no full buffering in RAM.
 
 ## Dependencies
 
-- **HTTP server** (Express route registered by router)
-- **WebSocket server** (`ws` library, started by channel)
-- **Data DB channel** (via router, for gateway state + job lookups)
-- **Doc Store channel** (for artifact download)
+- **HTTP server** (started by channel — serves HELLO + artifact download)
+- **WebSocket server** (started by channel, upgrade callback passed to HTTP server)
+- **Router** (via `sendToRouter` — for device state lookup, token validation, JOB_STATUS forwarding)
+- **Doc Store** (via `docStore.getArtifactStream` — for artifact download)
 
 ## State Machines
 

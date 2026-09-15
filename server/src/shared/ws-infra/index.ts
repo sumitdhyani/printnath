@@ -19,6 +19,7 @@ export type WsServerParams = {
 
 export type WsInteractionFunctions = {
   onWsUpgrade: OnWsUpgrade;
+  send: (connection: ConnectionObject, message: WebSocketMessage) => void;
   closeConnection: (connection: ConnectionObject) => Promise<void>;
   shutdown: () => Promise<void>;
 };
@@ -33,7 +34,7 @@ export function start(params: WsServerParams): WsInteractionFunctions {
       const connId = randomUUID() as ConnectionId;
       const connection: ConnectionObject = { id: connId };
       connections.set(connId, { conn: connection, ws });
-      params.onNewConnection(connection);
+      params.onNewConnection(connection, req.url ?? '');
 
       ws.on('message', (data: Buffer, isBinary: boolean) => {
         const msg: WebSocketMessage = isBinary
@@ -51,6 +52,17 @@ export function start(params: WsServerParams): WsInteractionFunctions {
         console.error(`WS error on ${connId}:`, err.message);
       });
     });
+  };
+
+  // ── Send a message to a connection ──
+  const send = (connection: ConnectionObject, message: WebSocketMessage): void => {
+    const entry = connections.get(connection.id);
+    if (!entry) return;
+    if (message.type === 'text') {
+      entry.ws.send(message.data);
+    } else {
+      entry.ws.send(message.data as Uint8Array);
+    }
   };
 
   // ── Close a specific connection ──
@@ -71,5 +83,5 @@ export function start(params: WsServerParams): WsInteractionFunctions {
     wss.close();
   };
 
-  return { onWsUpgrade, closeConnection, shutdown };
+  return { onWsUpgrade, send, closeConnection, shutdown };
 }

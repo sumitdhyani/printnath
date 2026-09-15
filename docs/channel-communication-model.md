@@ -80,6 +80,6 @@ Used when channel needs to notify router of something unexpected (e.g., gateway 
 | Channel | Types used |
 |---|---|
 | Data DB | In_Req, Out_Resp |
-| Gateway | In_Req, Out_Resp, Out_Req, Out_Pub, Out_Us |
+| Gateway | In_Req, Out_Resp, Out_Req, Out_Us |
 | User (future) | In_Req, Out_Resp, Out_Req, In_Resp |
 | Doc Store (future) | In_Req, Out_Resp |

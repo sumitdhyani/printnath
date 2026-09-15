@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { randomUUID } from 'crypto';
+import { Readable } from 'stream';
 import type {
   ConnectionId,
   ConnectionObject,
@@ -88,11 +89,18 @@ export async function start(params: HttpServerParams): Promise<InteractionFuncti
 
       const respond: Respond = async (response: HttpResponse) => {
         res.writeHead(response.status, response.headers as Record<string, string>);
-        const responseBody =
-          typeof response.body === 'string' || response.body instanceof Buffer
-            ? response.body
-            : JSON.stringify(response.body);
-        res.end(responseBody);
+        if (response.body instanceof Readable) {
+          response.body.on('error', (err) => {
+            res.end(`{"error":"Stream error: ${err.message}"}`);
+          });
+          response.body.pipe(res);
+        } else {
+          const responseBody =
+            typeof response.body === 'string' || response.body instanceof Buffer
+              ? response.body
+              : JSON.stringify(response.body);
+          res.end(responseBody);
+        }
       };
 
       params.onRequest(connection, req.url ?? '/', httpRequest, respond);

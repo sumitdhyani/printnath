@@ -1,5 +1,15 @@
 # Known Issues (v1)
 
+## 0. Gateway OFFLINE timeout not implemented
+
+**Impact:** A gateway that goes OFFLINE stays in OFFLINE state forever unless it reconnects. No automated cleanup for decommissioned/hardware-dead gateways. Owner must manually deactivate.
+
+**Root cause:** Server-side lifecycle SM has `OFFLINE → timeoutReset → PRE_ACTIVATION` transition but the timeout mechanism is not implemented in v1. Gateway records in OFFLINE state accumulate indefinitely.
+
+**Data consistency:** Yes — see data_consistency_notes.md §3 (orphan sessions — same pattern applies to gateway records).
+
+**Future fix:** Implement a cron job or lazy timeout check: if `lastHeartbeat + 30 days < now`, auto-transition to PRE_ACTIVATION.
+
 ## 1. Payment confirmed but job never prints
 
 **Impact:** Customer pays (UPI deducted). Job stays in `PAYMENT_PENDING` state. Print never starts. Customer leaves without document.

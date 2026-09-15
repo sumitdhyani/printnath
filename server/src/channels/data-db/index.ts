@@ -8,7 +8,6 @@ export type DataDbChannel = {
 
 export type DataDbDeps = {
   config: { url: string };
-  sendToRouter: (resp: Out_Resp) => Promise<void>;
 };
 
 export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {

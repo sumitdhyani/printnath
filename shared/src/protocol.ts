@@ -30,8 +30,7 @@ export type WsMessageType =
   // Server → Gateway
   | 'CAPABILITY_QUERY'
   | 'PRINT_PREFLIGHT'
-  | 'PRINT_JOB'
-  | 'CANCEL_JOB';
+  | 'PRINT_JOB';
 
 // ===== Base WS message envelope =====
 
@@ -105,11 +104,6 @@ export interface PrintJobPayload {
   artifactUrl: string;
   authToken: string;
   requirements: PrintRequirementsPayload;
-}
-
-export interface CancelJobPayload {
-  jobId: string;
-  reason: string;
 }
 
 // ===== Session events (browser → server) =====

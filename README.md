@@ -69,6 +69,10 @@ v1 uses channel-based architecture — each DB operation is a single Prisma call
 
 See [Data Consistency Notes](docs/data-consistency-notes.md) for known limitations, failure scenarios, and future improvements.
 
+## Channel Communication Model
+
+Each channel communicates with the router through typed message interfaces. See [Channel Communication Model](docs/channel-communication-model.md) for the 10-type model (In_Req, Out_Resp, Out_Req, In_Resp, Out_Pub, In_Sub, Out_Sub, In_Pub, Out_Us, In_Us).
+
 ## Running Tests
 
 ### Prerequisites
@@ -108,6 +112,15 @@ npx vitest run --config channel-tests/vitest.config.ts -t "Owner"
 ```sh
 npx vitest --config channel-tests/vitest.config.ts
 ```
+
+## Channels (documentation)
+
+Each channel has a contract document describing its in/out types, dependencies, and tests.
+
+| Channel | Doc | Status |
+|---|---|---|
+| Data DB | [channel-data-db.md](docs/channel-data-db.md) | ✅ Built, tested |
+| Server Gateway | [channel-server-gwy.md](docs/channel-server-gwy.md) | 📄 Designed |
 
 ## Project Structure
 

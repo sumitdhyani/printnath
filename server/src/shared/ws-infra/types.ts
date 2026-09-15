@@ -5,7 +5,8 @@ export type WebSocketMessage =
   | { readonly type: 'text'; readonly data: string }
   | { readonly type: 'binary'; readonly data: Uint8Array };
 
-export type OnNewConnection = (connection: ConnectionObject) => void;
+// connection + URL from the WS upgrade request (contains deviceId, token query params)
+export type OnNewConnection = (connection: ConnectionObject, upgradeUrl: string) => void;
 
 export type OnConnectionClosed = (connection: ConnectionObject) => void;
 

@@ -14,10 +14,8 @@
 | Server → Gateway | WebSocket | `PRINT_JOB` | Tell gateway an authorized print job is ready |
 | Gateway → Server | WebSocket | `JOB_ACCEPTED` | Gateway accepts responsibility for the job |
 | Gateway → Server | WebSocket | `JOB_STATUS` | Report queued/printing/completed/failed state |
-| Server → Gateway | WebSocket | `CANCEL_JOB` | Request cancellation where possible |
 | Gateway → Server | HTTP | `GET /api/gateway/jobs/{jobId}/artifact` | Download actual print-ready artifact |
-| Gateway → Server | HTTP | Configuration/diagnostic requests | Optional maintenance operations |
-| Server → Gateway | HTTP | Software/config download | Optional larger payloads such as software updates |
+| Owner browser → Server | HTTP | `GET /api/activate/{deviceId}` | Owner scans QR, server binds device to owner phone |
 
 ### Connection rules
 
@@ -33,6 +31,56 @@ gateway.
 The WebSocket is only a transport mechanism. The persistent server-side job
 record is the source of truth, so losing a WebSocket notification must not lose
 a print job.
+
+### WebSocket establishment
+
+After HELLO returns an operational/activated state, the gateway opens a WebSocket
+connection to the server:
+
+```text
+Gateway                                       Server
+   │                                            │
+   │  HTTP POST /api/gateway/hello              │
+   │  { deviceId, softwareVersion }             │
+   │───────────────────────────────────────────→│
+   │                                            │
+   │  HTTP 200 { state, deviceToken, ... }      │
+   │←───────────────────────────────────────────│
+   │                                            │
+   │  WebSocket wss://<server>/ws/gateway       │
+   │  ?deviceId=<id>&token=<deviceToken>        │
+   │───────────────────────────────────────────→│
+   │                                            │
+   │  [WebSocket established]                   │
+   │  Gateway sends: HEARTBEAT                  │
+   │  Server sends:  CAPABILITY_QUERY           │
+   │───────────────────────────────────────────→│
+```
+
+The WebSocket URL includes `deviceId` and `deviceToken` as query parameters.
+The server validates the token before accepting the connection.
+
+### Gateway registration flow
+
+```
+1. PRE-SHIPMENT
+   ─ Admin generates deviceId, registers in server (preRegisterDevice)
+   ─ Activation QR placed on device: https://<server>/activate/<deviceId>
+
+2. FIRST BOOT
+   ─ Gateway sends HTTP HELLO
+   ─ Server recognizes deviceId, responds PRE_ACTIVATION
+
+3. OWNER ACTIVATION (browser flow, separate from gateway protocol)
+   ─ Owner scans QR → opens activation page
+   ─ Authenticates via phone OTP
+   ─ Confirms → server binds deviceId → ownerPhone
+   ─ Server issues deviceToken
+
+4. SUBSEQUENT HELLO
+   ─ Gateway sends HELLO again (or after restart)
+   ─ Server responds with state + deviceToken + pending jobs
+```
 
 ### HELLO
 
@@ -50,21 +98,32 @@ Content-Type: application/json
 }
 ```
 
-Possible response before activation:
+Possible responses:
 
 ```json
+// Before activation — device registered but no owner bound
 {
   "state": "PRE_ACTIVATION",
   "retryAfter": 60
 }
 ```
 
-Possible response after activation/operation:
+```json
+// After activation — owner bound, deviceToken issued
+{
+  "state": "ACTIVATED",
+  "deviceToken": "tok-abc-123",
+  "retryAfter": 30
+}
+```
 
 ```json
+// Operational — ready for print jobs
 {
   "state": "OPERATIONAL",
-  "shopId": "SHOP-1023"
+  "deviceToken": "tok-abc-123",
+  "shopName": "Main St Print Shop",
+  "pendingJobIds": ["JOB-001", "JOB-002"]
 }
 ```
 

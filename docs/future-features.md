@@ -132,7 +132,25 @@ model Customer {
 
 ---
 
-## 5. Touchscreen Kiosk Mode
+## 5. Cancel Job (CANCEL_JOB protocol message)
+
+**Description:** Server-initiated cancellation of an in-flight print job on the gateway. Server sends `CANCEL_JOB` via WebSocket, gateway stops printing (if possible) and reports status.
+
+**Why deferred:** v1 customer is physically at the shop — no scenario where they pay then cancel mid-print. Server-side cancellation (timeout, refund) doesn't need gateway protocol — just update DB and skip re-dispatch on reconnect.
+
+**Wire protocol (when implemented):**
+```
+Server → Gateway: { type: "CANCEL_JOB", payload: { jobId, reason } }
+Gateway → Server: { type: "JOB_STATUS", payload: { jobId, status: "CANCELLED", reason } }
+```
+
+**Dependencies:** Customer-facing cancel button in browser, gateway-side print job abort logic, refund flow.
+
+**Migration:** Add `CANCEL_JOB` handler to gateway channel `In_Req`. Add case in gateway WebSocket message router. Zero impact on existing v1 records — cancelled jobs already handled server-side.
+
+---
+
+## 6. Touchscreen Kiosk Mode
 
 **Description:** Physical kiosk with touchscreen UI. Operates as a different frontend on the same backend. Uses the same channel architecture — new "Kiosk Channel" instead of "User Channel" for the browser.
 

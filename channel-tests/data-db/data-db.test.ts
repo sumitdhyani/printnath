@@ -7,7 +7,6 @@ let channel: DataDbChannel;
 beforeEach(async () => {
   channel = await initDataDb({
     config: { url: globalThis.__TEST_DB_URL__ },
-    sendToRouter: async () => {},
   });
 });
 
