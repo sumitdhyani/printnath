@@ -44,7 +44,7 @@ type GatewayChannel = {
 |---|---|---|
 | `RequestPreFlight` | `{ deviceId, jobId, documents[] }` | Send PRINT_PREFLIGHT to gateway, wait for response. Returns `ok: true` if can fulfill, `ok: false` with reason if rejected |
 | `RequestPrint` | `{ deviceId, jobId, artifactUrl, authToken, documents[] }` | Send PRINT_JOB to gateway, wait for JOB_ACCEPTED. Returns `ok: true` on acceptance |
-| `GetPrinterCapabilities` | `{ deviceId }` | Return cached printer capabilities (from last CAPABILITY_RESPONSE) |
+| `GetPrinterCapabilities` | `{ deviceId }` | Return cached printer capabilities (from last CAPABILITY_INFO) |
 
 ---
 
@@ -139,8 +139,7 @@ Server validates `deviceToken` before accepting. Once connected:
 | Direction | Message | Payload | Description |
 |---|---|---|---|
 | Gateway → Server | `HEARTBEAT` | `{ ts }` | Every 30s |
-| Server → Gateway | `CAPABILITY_QUERY` | `{}` | After WS established |
-| Gateway → Server | `CAPABILITY_RESPONSE` | `{ printers: [...] }` | Printer list + capabilities |
+| Gateway → Server | `CAPABILITY_INFO` | `{ printers: [...] }` | Printer list + capabilities |
 | Server → Gateway | `PRINT_PREFLIGHT` | `{ jobId, requirements }` | Pre-flight check |
 | Gateway → Server | `PRINT_PREFLIGHT_RESPONSE` | `{ jobId, canFulfill, reason? }` | Accept/reject |
 | Server → Gateway | `PRINT_JOB` | `{ jobId, artifactUrl, authToken, requirements }` | Authorized job |

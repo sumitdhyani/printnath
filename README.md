@@ -88,6 +88,8 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 
 Tests run against a real PostgreSQL database (`printnath_test`). Setup creates it and runs migrations automatically.
 
+See [Test Setup Documentation](docs/channel-test-setup.md) for execution order, file structure, and troubleshooting.
+
 **Run all channel tests:**
 ```sh
 npx vitest run --config channel-tests/vitest.config.ts
