@@ -12,7 +12,7 @@ import type {
 import type { WebSocketMessage } from '../../shared/ws-infra/types';
 import { Readable } from 'stream';
 import type { In_Req, Out_Resp, Out_Req, Out_Us, In_Resp, HelloRequest, HelloResponse, PrinterInfo, CapabilityInfoPayload, JobStatusPayload } from './types';
-import { Methods } from './types';
+import { Methods } from '../../shared/contracts/protocol';
 
 export type GatewayDeps = {
   config: { httpPort: number; wsPath: string },
@@ -151,7 +151,7 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
         case Methods.GetPrinterCapabilities: {
           const printers = deviceCapabilities.get(req.args.deviceId);
           return printers?
-            { method: Methods.GetPrinterCapabilities, ok: true, data: { printers } }:
+            { method: Methods.GetPrinterCapabilities, ok: true, printers }:
             { method: Methods.GetPrinterCapabilities, ok: false, error: "Device not connected" };
         }
 
@@ -195,7 +195,7 @@ async function handleHttpRequest(
     if (!gwResp.ok)
       return await respond({ status: 404, headers: {}, body: `{"error": ${gwResp.error}}`});
 
-    const gw = gwResp.data as { deviceId: string; lifecycleState: string; deviceToken: string | null };
+    const gw = gwResp as { deviceId: string; lifecycleState: string; deviceToken: string | null };
     const helloResp: HelloResponse = {
       state: gw.lifecycleState as HelloResponse['state'],
       deviceToken: gw.deviceToken ?? undefined,

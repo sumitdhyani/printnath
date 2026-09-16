@@ -1,148 +1,79 @@
-// ===== Gateway Channel type contracts =====
+// ===== Gateway Channel types =====
+// Derives In_Req / Out_Resp / Out_Req / In_Resp from the shared Contract.
 
-// ── Method constants ──
+export type { PrinterInfo } from "../../shared/contracts/protocol";
+export { Methods } from "../../shared/contracts/protocol";
+import { Methods, type Contract } from '../../shared/contracts/protocol';
 
-export const Methods = {
-// In_Req
-  RequestPreFlight: 'requestPreFlight',
-  RequestPrint: 'requestPrint',
-  GetPrinterCapabilities : 'getPrinterCapabilities',
-  // Out_Req
-  RequestDeviceDetails  : 'requestDeviceDetails',
-  ValidateArtifactToken : 'validateArtifactToken'
-} as const;
+// ── Gateway method subsets ──
 
-// ── Incoming requests (Router → Gateway channel) ──
+type GwInMethods =
+  | typeof Methods.RequestPreFlight
+  | typeof Methods.RequestPrint
+  | typeof Methods.GetPrinterCapabilities;
 
-export type In_Req =
-  | { method: typeof Methods.RequestPreFlight; args: { deviceId: string; jobId: string; documents: PrintDocument[] } }
-  | { method: typeof Methods.RequestPrint; args: { deviceId: string; jobId: string; artifactUrl: string; authToken: string; documents: PrintDocument[] } }
-  | { method: typeof Methods.GetPrinterCapabilities; args: { deviceId: string } };
+type GwOutMethods =
+  | typeof Methods.RequestDeviceDetails
+  | typeof Methods.ValidateArtifactToken;
 
-// ── Outgoing responses (in reply to In_Req) ──
+// ── Derived types ──
 
-export type Out_Resp =
-  | { method: typeof Methods.RequestPreFlight; ok: true}
-  | { method: typeof Methods.RequestPrint; ok: true}
-  | { method: typeof Methods.GetPrinterCapabilities; ok: true; data: { printers: PrinterInfo[] } }
-  | { method: string; ok: false; error: string };
+export type In_Req = {
+  [M in GwInMethods]: { method: M; args: Contract[M]['args'] };
+}[GwInMethods];
 
-  export type Out_Req =
-  | { method: typeof Methods.RequestDeviceDetails; args: { deviceId: string } }
-  | { method: typeof Methods.ValidateArtifactToken; args: { jobId: string; authToken: string } };
+export type Out_Resp = {
+  [M in GwInMethods]: { method: M; ok: true } & Contract[M]["result"];
+}[GwInMethods] | { method: string; ok: false; error: string };
 
-  export type In_Resp =
-  | {method: typeof Methods.RequestDeviceDetails, ok: true, data: {deviceId : string, lifecycleState: string, deviceToken: string | null} }
-  | {method: typeof Methods.ValidateArtifactToken, ok: true, data: {valid: boolean} }
-  | {method: string; ok: false; error: string };
+export type Out_Req = {
+  [M in GwOutMethods]: { method: M; args: Contract[M]['args'] };
+}[GwOutMethods];
+
+export type In_Resp = {
+  [M in GwOutMethods]: { method: M; ok: true } & Contract[M]["result"];
+}[GwOutMethods] | { method: string; ok: false; error: string };
+
+// ── Out_Us: events (fire-and-forget, no response) ──
 
 export type Out_Us =
   | { event: 'GW_CHANNEL_READY'; payload: { wsPort: number } }
   | { event: 'GW_CONNECTED'; payload: { deviceId: string } }
   | { event: 'GW_DISCONNECTED'; payload: { deviceId: string } }
   | { event: 'GW_ERROR'; payload: { deviceId: string; error: string } }
-  | { event: 'JOB_STATUS_UPDATE'; payload: { deviceId: string; jobId: string; status: JobStatusValue; reason?: string } };
+  | { event: 'JOB_STATUS_UPDATE'; payload: { deviceId: string; jobId: string; status: import('../../shared/contracts/protocol').JobStatusValue; reason?: string } };
 
-// ── Incoming responses (Router → Gateway channel, in reply to Out_Req) ──
+// ══════════════════════════════════════════════════════════════
+// Wire protocol types (Gateway ↔ Server WebSocket messages)
+// These define the on-the-wire format between server and gateway device.
+// ══════════════════════════════════════════════════════════════
 
-// ===== Wire protocol: Gateway ↔ Server =====
+export type WsMessageType =
+  | 'HEARTBEAT'
+  | 'PRINT_PREFLIGHT'
+  | 'PRINT_JOB'
+  | 'CAPABILITY_INFO'
+  | 'PRINT_PREFLIGHT_RESPONSE'
+  | 'JOB_ACCEPTED'
+  | 'JOB_STATUS';
 
-// ── HELLO HTTP ──
+export type WsMessage<T = unknown> = { type: WsMessageType; payload: T; timestamp: string };
 
-export type HelloRequest = {
-  deviceId: string;
-  softwareVersion: string;
-}
+export type HeartbeatPayload = { ts: string };
+export type CapabilityInfoPayload = { printers: import('../../shared/contracts/protocol').PrinterInfo[] };
+export type PreflightPayload = { jobId: string; documents: import('../../shared/contracts/protocol').PrintDocument[] };
+export type PreflightResponsePayload = { jobId: string; canFulfill: boolean; reason?: string };
+export type PrintJobPayload = { jobId: string; artifactUrl: string; authToken: string; documents: import('../../shared/contracts/protocol').PrintDocument[] };
+export type JobAcceptedPayload = { jobId: string };
+export type JobStatusPayload = { jobId: string; status: import('../../shared/contracts/protocol').JobStatusValue; reason?: string; at: string };
 
+// HTTP HELLO
+export type HelloRequest = { deviceId: string; softwareVersion: string };
 export type HelloState = 'PRE_ACTIVATION' | 'ACTIVATED' | 'OPERATIONAL';
-
 export type HelloResponse = {
   state: HelloState;
   deviceToken?: string;
   shopName?: string;
   pendingJobIds?: string[];
   retryAfter?: number;
-}
-
-// ── WebSocket message types ──
-
-export type WsMessageType =
-  // Bidirectional
-  | 'HEARTBEAT'
-  // Server → Gateway
-  | 'PRINT_PREFLIGHT'
-  | 'PRINT_JOB'
-  // Gateway → Server (gateway pushes unsolicited)
-  | 'CAPABILITY_INFO'
-  | 'PRINT_PREFLIGHT_RESPONSE'
-  | 'JOB_ACCEPTED'
-  | 'JOB_STATUS';
-
-// ── WebSocket message envelope ──
-
-export type WsMessage<T = unknown> = {
-  type: WsMessageType;
-  payload: T;
-  timestamp: string;
-}
-
-// ── WebSocket message payloads ──
-
-export type HeartbeatPayload = {
-  ts: string;
-}
-
-export type PrinterInfo = {
-  name: string;
-  state: string;
-  capabilities: {
-    color: boolean;
-    duplex: boolean;
-    sizes: string[];
-    maxCopies?: number;
-  };
-}
-
-export type CapabilityInfoPayload = {
-  printers: PrinterInfo[];
-}
-
-export type PrintDocument = {
-  pageCount: number;
-  color: boolean;
-  duplex: boolean;
-  paperSize: string;
-  copies: number;
-}
-
-export type PreflightPayload = {
-  jobId: string;
-  documents: PrintDocument[];
-}
-
-export type PreflightResponsePayload = {
-  jobId: string;
-  canFulfill: boolean;
-  reason?: string;
-}
-
-export type PrintJobPayload = {
-  jobId: string;
-  artifactUrl: string;
-  authToken: string;
-  documents: PrintDocument[];
-}
-
-export type JobAcceptedPayload = {
-  jobId: string;
-}
-
-export type JobStatusValue = 'QUEUED' | 'PRINTING' | 'COMPLETED' | 'FAILED';
-
-export type JobStatusPayload = {
-  jobId: string;
-  status: JobStatusValue;
-  reason?: string;
-  at: string;
-}
-
+};

@@ -51,14 +51,16 @@ function createMockDeps(): GatewayDeps & { calls: MockCalls[] } {
             return {
               method: Methods.RequestDeviceDetails,
               ok: true,
-              data: { deviceId: KNOWN_DEVICE, lifecycleState: 'OPERATIONAL', deviceToken: 'dev-token' },
+              deviceId: KNOWN_DEVICE,
+              lifecycleState: 'OPERATIONAL',
+              deviceToken: 'dev-token',
             } as In_Resp;
           }
           return { method: event.method as string, ok: false, error: 'Unknown device' } as In_Resp;
 
         case Methods.ValidateArtifactToken:
           if (event.args.authToken === VALID_TOKEN) {
-            return { method: Methods.ValidateArtifactToken, ok: true, data: { valid: true } } as In_Resp;
+            return { method: Methods.ValidateArtifactToken, ok: true, valid: true } as In_Resp;
           }
           return { method: event.method as string, ok: false, error: 'Invalid token' } as In_Resp;
 
@@ -265,7 +267,7 @@ describe('Printer capabilities', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data.printers).toEqual(fakePrinters);
+    expect(result.printers).toEqual(fakePrinters);
     ws.close();
   });
 
