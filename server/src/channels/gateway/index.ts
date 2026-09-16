@@ -240,12 +240,11 @@ async function handleHttpRequest(
       return;
     }
 
-    const headers: Record<string, string> = { 'Content-Type': artifact.contentType };
-    if (artifact.contentLength !== undefined) {
-      headers['Content-Length'] = artifact.contentLength.toString();
-    }
-
-    await respond({ status: 200, headers, body: artifact.stream });
+    await respond({
+      status: 200,
+      headers: { 'Content-Type': artifact.contentType },
+      body: artifact.stream,
+    });
     return;
   }
 

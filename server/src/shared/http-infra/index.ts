@@ -69,7 +69,7 @@ export async function start(params: HttpServerParams): Promise<InteractionFuncti
     // Parse body
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => {
+    req.on('end', async () => {
       const rawBody = Buffer.concat(chunks);
       let body: unknown = rawBody;
       const contentType = req.headers['content-type'] ?? '';
@@ -90,10 +90,14 @@ export async function start(params: HttpServerParams): Promise<InteractionFuncti
       const respond: Respond = async (response: HttpResponse) => {
         res.writeHead(response.status, response.headers as Record<string, string>);
         if (response.body instanceof Readable) {
-          response.body.on('error', (err) => {
-            res.end(`{"error":"Stream error: ${err.message}"}`);
+          await new Promise<void>((resolve, reject) => {
+            response.body.on('end', resolve);
+            response.body.on('error', (err) => {
+              res.end(`{"error":"Stream error: ${err.message}"}`);
+              reject(err);
+            });
+            response.body.pipe(res);
           });
-          response.body.pipe(res);
         } else {
           const responseBody =
             typeof response.body === 'string' || response.body instanceof Buffer
@@ -103,7 +107,7 @@ export async function start(params: HttpServerParams): Promise<InteractionFuncti
         }
       };
 
-      params.onRequest(connection, req.url ?? '/', httpRequest, respond);
+      await params.onRequest(connection, req.url ?? '/', httpRequest, respond);
     });
   });
 
