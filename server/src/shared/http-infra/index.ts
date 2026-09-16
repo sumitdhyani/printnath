@@ -91,19 +91,18 @@ export async function start(params: HttpServerParams): Promise<InteractionFuncti
         res.writeHead(response.status, response.headers as Record<string, string>);
         if (response.body instanceof Readable) {
           await new Promise<void>((resolve, reject) => {
-            response.body.on('end', resolve);
-            response.body.on('error', (err) => {
+            const stream = response.body as Readable;
+            stream.on('end', resolve);
+            stream.on('error', (err: Error) => {
               res.end(`{"error":"Stream error: ${err.message}"}`);
               reject(err);
             });
-            response.body.pipe(res);
+            stream.pipe(res);
           });
+        } else if (typeof response.body === 'string') {
+          res.end(response.body);
         } else {
-          const responseBody =
-            typeof response.body === 'string' || response.body instanceof Buffer
-              ? response.body
-              : JSON.stringify(response.body);
-          res.end(responseBody);
+          res.end(JSON.stringify(response.body));
         }
       };
 

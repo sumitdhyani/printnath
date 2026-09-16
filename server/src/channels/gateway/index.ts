@@ -149,8 +149,10 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
         }
 
         case Methods.GetPrinterCapabilities: {
-          const printers = deviceCapabilities.get(req.args.deviceId) ?? [];
-          return { method: Methods.GetPrinterCapabilities, ok: true, data: { printers } };
+          const printers = deviceCapabilities.get(req.args.deviceId);
+          return printers?
+            { method: Methods.GetPrinterCapabilities, ok: true, data: { printers } }:
+            { method: Methods.GetPrinterCapabilities, ok: false, error: "Device not connected" };
         }
 
         default: {

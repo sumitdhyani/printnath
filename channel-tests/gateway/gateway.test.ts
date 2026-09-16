@@ -269,14 +269,13 @@ describe('Printer capabilities', () => {
     ws.close();
   });
 
-  test('unknown device returns empty printer list', async () => {
+  test('unknown device returns error', async () => {
     const result = await channel.execute({
       method: Methods.GetPrinterCapabilities,
       args: { deviceId: UNKNOWN_DEVICE },
     });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data.printers).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual("Device not connected");
   });
 });
 
@@ -675,12 +674,13 @@ describe('Unknown WS messages', () => {
     sendWs(ws, 'UNKNOWN_TYPE', { foo: 'bar' });
     await new Promise((r) => setTimeout(r, 100));
 
-    // Channel should still be operational
-    const result = await channel.execute({
-      method: Methods.GetPrinterCapabilities,
-      args: { deviceId: KNOWN_DEVICE },
+    // Channel should still process a valid HTTP request
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/gateway/hello`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: KNOWN_DEVICE }),
     });
-    expect(result.ok).toBe(true);
+    expect(res.status).toBe(200);
     ws.close();
   });
 });
