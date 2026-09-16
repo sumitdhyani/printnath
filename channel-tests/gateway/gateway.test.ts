@@ -238,7 +238,7 @@ describe('Printer capabilities', () => {
    *   │  WS connect                        │
    *   │───────────────────────────────────→│
    *   │                                    │
-   *   │  WS: CAPABILITY_RESPONSE           │
+   *   │  WS: CAPABILITY_INFO           │
    *   │  { printers: [...] }               │
    *   │←───────────────────────────────────│
    *   │                                    │
@@ -252,11 +252,11 @@ describe('Printer capabilities', () => {
    *   │    │ ← { printers: [...] } (cached)│
    *   │    │←──────────────────────────────│
    */
-  test('CAPABILITY_RESPONSE is cached and returned via execute', async () => {
+  test('CAPABILITY_INFO is cached and returned via execute', async () => {
     const ws = new WebSocket(wsUrl(KNOWN_DEVICE));
     await new Promise<void>((resolve) => ws.on('open', resolve));
 
-    sendWs(ws, 'CAPABILITY_RESPONSE', { printers: fakePrinters });
+    sendWs(ws, 'CAPABILITY_INFO', { printers: fakePrinters });
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await channel.execute({
@@ -350,11 +350,11 @@ describe('RequestPreFlight', () => {
     const execPromise = channel.execute({ method: Methods.RequestPreFlight, args: preflightArgs });
     await waitForWsMessage(ws);
 
-    sendWs(ws, 'PRINT_PREFLIGHT_RESPONSE', { jobId: TEST_JOB_ID, canFulfill: false, reason: 'Color unavailable' });
+    sendWs(ws, 'PRINT_PREFLIGHT_RESPONSE', { jobId: TEST_JOB_ID, canFulfill: false, reason: 'Insufficient pages for the job' });
 
     const result = await execPromise;
     expect(result.ok).toBe(false);
-    expect(result.error).toBe('Color unavailable');
+    expect(result.error).toBe('Insufficient pages for the job');
     ws.close();
   });
 

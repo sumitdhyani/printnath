@@ -7,8 +7,7 @@
 | Gateway → Server | HTTP | `HELLO` | Announce startup/reconnection and identify gateway |
 | Server → Gateway | HTTP response | `HELLO_RESPONSE` | Return current lifecycle state/instructions |
 | Gateway → Server | WebSocket | `HEARTBEAT` | Confirm gateway is alive and report basic health |
-| Server → Gateway | WebSocket | `CAPABILITY_QUERY` | Request current effective print capabilities |
-| Gateway → Server | WebSocket | `CAPABILITY_RESPONSE` | Return capabilities derived from local printers |
+| Gateway → Server | WebSocket | `CAPABILITY_INFO` | Gateway pushes printer capabilities unsolicited (on connect and on change) |
 | Server → Gateway | WebSocket | `PRINT_PREFLIGHT` | Ask whether the gateway can currently fulfill print requirements |
 | Gateway → Server | WebSocket | `PRINT_PREFLIGHT_RESPONSE` | Accept/reject requirements and provide reason if rejected |
 | Server → Gateway | WebSocket | `PRINT_JOB` | Tell gateway an authorized print job is ready |

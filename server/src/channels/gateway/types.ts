@@ -67,13 +67,13 @@ export type HelloResponse = {
 // ── WebSocket message types ──
 
 export type WsMessageType =
-  // From server channel
+  // Bidirectional
   | 'HEARTBEAT'
-  | 'CAPABILITY_QUERY'
+  // Server → Gateway
   | 'PRINT_PREFLIGHT'
   | 'PRINT_JOB'
-  // From gwteway device
-  | 'CAPABILITY_RESPONSE'
+  // Gateway → Server (gateway pushes unsolicited)
+  | 'CAPABILITY_INFO'
   | 'PRINT_PREFLIGHT_RESPONSE'
   | 'JOB_ACCEPTED'
   | 'JOB_STATUS';
@@ -103,7 +103,7 @@ export type PrinterInfo = {
   };
 }
 
-export type CapabilityResponsePayload = {
+export type CapabilityInfoPayload = {
   printers: PrinterInfo[];
 }
 

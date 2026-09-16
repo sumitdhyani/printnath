@@ -20,15 +20,15 @@ export interface HelloResponse {
 // ===== WebSocket message types =====
 
 export type WsMessageType =
-  // Gateway → Server
+  // Bidirectional
   | 'HEARTBEAT'
-  | 'CAPABILITY_RESPONSE'
+  // Gateway → Server (gateway pushes unsolicited)
+  | 'CAPABILITY_INFO'
   | 'PRINT_PREFLIGHT_RESPONSE'
   | 'JOB_ACCEPTED'
   | 'JOB_STATUS'
   | 'PRINTER_STATE'
   // Server → Gateway
-  | 'CAPABILITY_QUERY'
   | 'PRINT_PREFLIGHT'
   | 'PRINT_JOB';
 

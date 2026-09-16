@@ -11,7 +11,7 @@ import type {
 } from '../../shared/http-infra/types';
 import type { WebSocketMessage } from '../../shared/ws-infra/types';
 import { Readable } from 'stream';
-import type { In_Req, Out_Resp, Out_Req, Out_Us, In_Resp, HelloRequest, HelloResponse, PrinterInfo, CapabilityResponsePayload, JobStatusPayload } from './types';
+import type { In_Req, Out_Resp, Out_Req, Out_Us, In_Resp, HelloRequest, HelloResponse, PrinterInfo, CapabilityInfoPayload, JobStatusPayload } from './types';
 import { Methods } from './types';
 
 export type GatewayDeps = {
@@ -273,17 +273,14 @@ async function handleWsMessage(
   let parsed: { type: string; payload?: unknown };
   try { parsed = JSON.parse(rawMsg.data); } catch { return; }
 
-  // On first message, identify device (CAPABILITY_RESPONSE from a newly connected gateway)
-  // For now, we rely on the gateway sending messages that include enough context
-  // Device binding happens when the channel receives gatewayHello via HTTP first,
-  // then WS connects — the conn id is tracked separately.
+  // CAPABILITY_INFO from gateway arrives here. Also handles other WS messages.
 
   switch (parsed.type) {
     case 'HEARTBEAT':
       break;
 
-    case 'CAPABILITY_RESPONSE': {
-      const payload = parsed.payload as CapabilityResponsePayload;
+    case 'CAPABILITY_INFO': {
+      const payload = parsed.payload as CapabilityInfoPayload;
       for (const [deviceId, c] of deviceToConn) {
         if (c.id === conn.id) {
           deviceCapabilities.set(deviceId, payload.printers);
