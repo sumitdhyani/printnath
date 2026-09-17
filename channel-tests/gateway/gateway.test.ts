@@ -536,7 +536,7 @@ describe('JOB_STATUS', () => {
    *   │  { deviceId, jobId,               │
    *   │    status: "COMPLETED" }           │
    */
-  test('forwards status updates as Out_Us events', async () => {
+  test('forwards status updates as Out_Us events, P:C', async () => {
     const ws = new WebSocket(wsUrl(KNOWN_DEVICE));
     await new Promise<void>((resolve) => ws.on('open', resolve));
     await new Promise((r) => setTimeout(r, 50));
@@ -551,6 +551,106 @@ describe('JOB_STATUS', () => {
     expect(statusCalls).toHaveLength(2);
     expect((statusCalls[0].payload as any).status).toBe('PRINTING');
     expect((statusCalls[1].payload as any).status).toBe('COMPLETED');
+    ws.close();
+  });
+
+   /*
+   * Fake Gateway                      Server
+   *   │
+   *   │  WS: JOB_STATUS                    │
+   *   │  { jobId, status: "QUEUED",     │
+   *   │    reason: null, at: "..." }       │
+   *   │───────────────────────────────────→│                                    │
+   *   │                                    │
+   *   │  sendToRouter(JOB_STATUS_UPDATE)   │
+   *   │  { deviceId, jobId,               │
+   *   │    status: "QUEUED" }            │
+   *   │───────────────────────────────────→│
+   *   │                                    │
+   *   │  sendToRouter(JOB_STATUS_UPDATE)   │
+   *   │  { deviceId, jobId,               │
+   *   │    status: "PRINTING" }            │
+   *   │                                    │
+   *   │  ── later ──                       │
+   *   │                                    │
+   *   │  WS: JOB_STATUS                    │
+   *   │  { jobId, status: "COMPLETED",    │
+   *   │    at: "..." }                     │
+   *   │───────────────────────────────────→│
+   *   │                                    │
+   *   │  sendToRouter(JOB_STATUS_UPDATE)   │
+   *   │  { deviceId, jobId,               │
+   *   │    status: "COMPLETED" }           │
+   */
+  test('forwards status updates as Out_Us events, Q:P:C', async () => {
+    const ws = new WebSocket(wsUrl(KNOWN_DEVICE));
+    await new Promise<void>((resolve) => ws.on('open', resolve));
+    await new Promise((r) => setTimeout(r, 50));
+
+    sendWs(ws, 'JOB_STATUS', { jobId: TEST_JOB_ID, status: 'QUEUED', at: new Date().toISOString() });
+    await new Promise((r) => setTimeout(r, 50));
+
+    sendWs(ws, 'JOB_STATUS', { jobId: TEST_JOB_ID, status: 'PRINTING', at: new Date().toISOString() });
+    await new Promise((r) => setTimeout(r, 50));
+
+    sendWs(ws, 'JOB_STATUS', { jobId: TEST_JOB_ID, status: 'COMPLETED', at: new Date().toISOString() });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const statusCalls = deps.calls.filter((c) => c.event === 'JOB_STATUS_UPDATE');
+    expect(statusCalls).toHaveLength(3);
+    expect((statusCalls[0].payload as any).status).toBe('QUEUED');
+    expect((statusCalls[1].payload as any).status).toBe('PRINTING');
+    expect((statusCalls[2].payload as any).status).toBe('COMPLETED');
+    ws.close();
+  });
+
+   /*
+   * Fake Gateway                      Server
+   *   │
+   *   │  WS: JOB_STATUS                    │
+   *   │  { jobId, status: "QUEUED",     │
+   *   │    reason: null, at: "..." }       │
+   *   │───────────────────────────────────→│                                    │
+   *   │                                    │
+   *   │  sendToRouter(JOB_STATUS_UPDATE)   │
+   *   │  { deviceId, jobId,               │
+   *   │    status: "QUEUED" }            │
+   *   │───────────────────────────────────→│
+   *   │                                    │
+   *   │  sendToRouter(JOB_STATUS_UPDATE)   │
+   *   │  { deviceId, jobId,               │
+   *   │    status: "PRINTING" }            │
+   *   │                                    │
+   *   │  ── later ──                       │
+   *   │                                    │
+   *   │  WS: JOB_STATUS                    │
+   *   │  { jobId, status: "FAILED",    │
+   *   │    at: "..." }                     │
+   *   │───────────────────────────────────→│
+   *   │                                    │
+   *   │  sendToRouter(JOB_STATUS_UPDATE)   │
+   *   │  { deviceId, jobId,               │
+   *   │    status: "FAILED" }           │
+   */
+  test('forwards status updates as Out_Us events, Q:P:F', async () => {
+    const ws = new WebSocket(wsUrl(KNOWN_DEVICE));
+    await new Promise<void>((resolve) => ws.on('open', resolve));
+    await new Promise((r) => setTimeout(r, 50));
+
+    sendWs(ws, 'JOB_STATUS', { jobId: TEST_JOB_ID, status: 'QUEUED', at: new Date().toISOString() });
+    await new Promise((r) => setTimeout(r, 50));
+
+    sendWs(ws, 'JOB_STATUS', { jobId: TEST_JOB_ID, status: 'PRINTING', at: new Date().toISOString() });
+    await new Promise((r) => setTimeout(r, 50));
+
+    sendWs(ws, 'JOB_STATUS', { jobId: TEST_JOB_ID, status: 'FAILED', at: new Date().toISOString(), reason: "Printer jammed"});
+    await new Promise((r) => setTimeout(r, 50));
+
+    const statusCalls = deps.calls.filter((c) => c.event === 'JOB_STATUS_UPDATE');
+    expect(statusCalls).toHaveLength(3);
+    expect((statusCalls[0].payload as any).status).toBe('QUEUED');
+    expect((statusCalls[1].payload as any).status).toBe('PRINTING');
+    expect((statusCalls[2].payload as any).status).toBe('FAILED');
     ws.close();
   });
 });
