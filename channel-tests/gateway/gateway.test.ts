@@ -64,6 +64,18 @@ function createMockDeps(): GatewayDeps & { calls: MockCalls[] } {
           }
           return { method: event.method as string, ok: false, error: 'Invalid token' } as In_Resp;
 
+        case Methods.FetchArtifact:
+          if (event.args.jobId === TEST_JOB_ID) {
+            return {
+              method: Methods.FetchArtifact,
+              ok: true,
+              stream: Readable.from([Buffer.from('fake-pdf-content')]),
+              contentType: 'application/pdf',
+              contentLength: 17,
+            } as unknown as In_Resp;
+          }
+          return { method: Methods.FetchArtifact, ok: false, error: 'Artifact not found' } as In_Resp;
+
         default:
           return { method: event.method as string, ok: false, error: 'Unhandled Out_Req' } as In_Resp;
       }
@@ -73,20 +85,7 @@ function createMockDeps(): GatewayDeps & { calls: MockCalls[] } {
     }
   };
 
-  const docStore = {
-    getArtifactStream: async (jobId: string) => {
-      if (jobId === TEST_JOB_ID) {
-        return {
-          stream: Readable.from([Buffer.from('fake-pdf-content')]),
-          contentType: 'application/pdf',
-          contentLength: 17,
-        };
-      }
-      return null;
-    },
-  };
-
-  return { config: { httpPort: TEST_PORT, wsPath: WS_PATH }, sendToRouter, docStore, calls };
+  return { config: { httpPort: TEST_PORT, wsPath: WS_PATH }, sendToRouter, calls };
 }
 
 // ── Channel lifecycle ──

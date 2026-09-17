@@ -2,7 +2,7 @@
 // Derives In_Req / Out_Resp / Out_Req / In_Resp from the shared Contract.
 
 export type { PrinterInfo } from "../../shared/contracts/protocol";
-export { Methods } from "../../shared/contracts/protocol";
+export { Methods, type Contract } from "../../shared/contracts/protocol";
 import { Methods, type Contract } from '../../shared/contracts/protocol';
 
 // ── Gateway method subsets ──
@@ -14,7 +14,8 @@ type GwInMethods =
 
 type GwOutMethods =
   | typeof Methods.RequestDeviceDetails
-  | typeof Methods.ValidateArtifactToken;
+  | typeof Methods.ValidateArtifactToken
+  | typeof Methods.FetchArtifact;
 
 // ── Derived types ──
 

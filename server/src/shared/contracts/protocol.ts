@@ -4,6 +4,8 @@
 // shapes across ALL channels.
 // ══════════════════════════════════════════════════════════════
 
+import { Readable } from 'stream';
+
 export const Methods = {
   // ── Gateway In_Req ──
   RequestPreFlight: 'requestPreFlight',
@@ -13,6 +15,13 @@ export const Methods = {
   // ── Gateway Out_Req ──
   RequestDeviceDetails: 'requestDeviceDetails',
   ValidateArtifactToken: 'validateArtifactToken',
+  FetchArtifact: 'fetchArtifact',
+
+  // ── Doc Store ──
+  StoreArtifact: 'storeArtifact',
+  GetArtifactStream: 'getArtifactStream',
+  DeleteArtifact: 'deleteArtifact',
+  ArtifactExists: 'artifactExists',
 
   // ── Data DB ──
   GetOwnerByPhone: 'getOwnerByPhone',
@@ -96,6 +105,33 @@ export interface Contract {
   [Methods.ValidateArtifactToken]: {
     args: { jobId: string; authToken: string };
     result: { valid: boolean };
+    error: { reason: string };
+  };
+  [Methods.FetchArtifact]: {
+    args: { jobId: string };
+    result: { stream: Readable; contentType: string; contentLength?: number };
+    error: { reason: string };
+  };
+
+  // ══════ Doc Store ══════
+  [Methods.StoreArtifact]: {
+    args: { jobId: string; body: Readable; contentType: string; contentLength: number };
+    result: { storageKey: string };
+    error: { reason: string };
+  };
+  [Methods.GetArtifactStream]: {
+    args: { storageKey: string };
+    result: { stream: any; contentType: string; contentLength?: number };
+    error: { reason: string };
+  };
+  [Methods.DeleteArtifact]: {
+    args: { storageKey: string };
+    result: {};
+    error: { reason: string };
+  };
+  [Methods.ArtifactExists]: {
+    args: { storageKey: string };
+    result: { exists: boolean };
     error: { reason: string };
   };
 

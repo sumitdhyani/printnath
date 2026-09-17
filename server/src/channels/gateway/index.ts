@@ -10,16 +10,12 @@ import type {
   OnConnectionClosed,
 } from '../../shared/http-infra/types';
 import type { WebSocketMessage } from '../../shared/ws-infra/types';
-import { Readable } from 'stream';
 import type { In_Req, Out_Resp, Out_Req, Out_Us, In_Resp, HelloRequest, HelloResponse, PrinterInfo, CapabilityInfoPayload, JobStatusPayload } from './types';
-import { Methods } from '../../shared/contracts/protocol';
+import { Contract, Methods } from '../../shared/contracts/protocol';
 
 export type GatewayDeps = {
   config: { httpPort: number; wsPath: string },
   sendToRouter: (event: Out_Req | Out_Us) => Promise<In_Resp | void>,
-  docStore: {
-    getArtifactStream: (jobId: string) => Promise<{ stream: Readable; contentType: string; contentLength?: number } | null>;
-  }
 };
 
 export type GatewayChannel = {
@@ -195,7 +191,7 @@ async function handleHttpRequest(
     if (!gwResp.ok)
       return await respond({ status: 404, headers: {}, body: `{"error": ${gwResp.error}}`});
 
-    const gw = gwResp as { deviceId: string; lifecycleState: string; deviceToken: string | null };
+    const gw = gwResp as Contract[typeof Methods.RequestDeviceDetails]["result"];
     const helloResp: HelloResponse = {
       state: gw.lifecycleState as HelloResponse['state'],
       deviceToken: gw.deviceToken ?? undefined,
@@ -236,16 +232,21 @@ async function handleHttpRequest(
       return;
     }
 
-    const artifact = await deps.docStore.getArtifactStream(jobId);
-    if (!artifact) {
+    const artifactResp = await deps.sendToRouter({
+      method: Methods.FetchArtifact,
+      args: { jobId },
+    }) as In_Resp;
+
+    if (!artifactResp.ok) {
       await respond({ status: 404, headers: {}, body: '{"error":"Artifact not found"}' });
       return;
     }
 
+    const artifactData = artifactResp as Contract[typeof Methods.FetchArtifact]["result"];
     await respond({
       status: 200,
-      headers: { 'Content-Type': artifact.contentType },
-      body: artifact.stream,
+      headers: { 'Content-Type': artifactData.contentType },
+      body: artifactData.stream,
     });
     return;
   }
