@@ -38,6 +38,20 @@ type GatewayChannel = {
 };
 ```
 
+### Contract Derivation
+
+Types in this file derive from the shared contract at `server/src/shared/contracts/protocol.ts`.
+The `Contract` interface defines `{ args, result, error }` per method. This file picks the
+gateway-specific methods and maps them into `In_Req`, `Out_Resp`, `Out_Req`, `In_Resp` using mapped types:
+
+```ts
+import { Methods, type Contract } from '../../shared/contracts/protocol';
+type GwMethods = | typeof Methods.RequestPreFlight | typeof Methods.RequestPrint;
+export type In_Req = { [M in GwMethods]: { method: M; args: Contract[M]['args'] } }[GwMethods];
+```
+
+This guarantees method names and shapes stay in sync across all channels.
+
 ### `In_Req` (Router → Gateway Channel)
 
 | Method | Args | Description |
