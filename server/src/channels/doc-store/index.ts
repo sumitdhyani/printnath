@@ -46,7 +46,7 @@ export async function initDocStore(deps: DocStoreDeps): Promise<DocStoreChannel>
             ContentType: r.args.contentType,
             ContentLength: r.args.contentLength,
           }));
-          return { method: Methods.StoreArtifact, ok: true, data: { storageKey } };
+          return { method: Methods.StoreArtifact, ok: true, result: { storageKey } };
         }
 
         // ── Get Stream ──
@@ -58,7 +58,7 @@ export async function initDocStore(deps: DocStoreDeps): Promise<DocStoreChannel>
           return {
             method: Methods.GetArtifactStream,
             ok: true,
-            data: {
+            result: {
               stream: obj.Body!,
               contentType: obj.ContentType ?? 'application/octet-stream',
               contentLength: obj.ContentLength ?? undefined,
@@ -72,7 +72,7 @@ export async function initDocStore(deps: DocStoreDeps): Promise<DocStoreChannel>
             Bucket: bucket,
             Key: r.args.storageKey,
           }));
-          return { method: Methods.DeleteArtifact, ok: true, data: {} };
+          return { method: Methods.DeleteArtifact, ok: true, result: {} };
         }
 
         // ── Exists ──
@@ -82,10 +82,10 @@ export async function initDocStore(deps: DocStoreDeps): Promise<DocStoreChannel>
               Bucket: bucket,
               Key: r.args.storageKey,
             }));
-            return { method: Methods.ArtifactExists, ok: true, data: { exists: true } };
+            return { method: Methods.ArtifactExists, ok: true, result: { exists: true } };
           } catch (err: any) {
             if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
-              return { method: Methods.ArtifactExists, ok: true, data: { exists: false } };
+              return { method: Methods.ArtifactExists, ok: true, result: { exists: false } };
             }
             throw err;
           }
@@ -96,7 +96,7 @@ export async function initDocStore(deps: DocStoreDeps): Promise<DocStoreChannel>
         }
       }
     } catch (err) {
-      return { method: r.method, ok: false, error: err instanceof Error ? err.message : String(err) };
+      return { method: r.method, ok: false, error: { reason: err instanceof Error ? err.message : String(err) } };
     }
   }
 

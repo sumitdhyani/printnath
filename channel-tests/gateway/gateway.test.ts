@@ -51,33 +51,37 @@ function createMockDeps(): GatewayDeps & { calls: MockCalls[] } {
             return {
               method: Methods.RequestDeviceDetails,
               ok: true,
-              deviceId: KNOWN_DEVICE,
-              lifecycleState: 'OPERATIONAL',
-              deviceToken: 'dev-token',
+              result: {
+                deviceId: KNOWN_DEVICE,
+                lifecycleState: 'OPERATIONAL',
+                deviceToken: 'dev-token',
+              },
             } as In_Resp;
           }
-          return { method: event.method as string, ok: false, error: 'Unknown device' } as In_Resp;
+          return { method: event.method as string, ok: false, error: { reason: 'Unknown device' } } as In_Resp;
 
         case Methods.ValidateArtifactToken:
           if (event.args.authToken === VALID_TOKEN) {
-            return { method: Methods.ValidateArtifactToken, ok: true, valid: true } as In_Resp;
+            return { method: Methods.ValidateArtifactToken, ok: true, result: { valid: true } } as In_Resp;
           }
-          return { method: event.method as string, ok: false, error: 'Invalid token' } as In_Resp;
+          return { method: event.method as string, ok: false, error: { reason: 'Invalid token' } } as In_Resp;
 
         case Methods.FetchArtifact:
           if (event.args.jobId === TEST_JOB_ID) {
             return {
               method: Methods.FetchArtifact,
               ok: true,
-              stream: Readable.from([Buffer.from('fake-pdf-content')]),
-              contentType: 'application/pdf',
-              contentLength: 17,
+              result: {
+                stream: Readable.from([Buffer.from('fake-pdf-content')]),
+                contentType: 'application/pdf',
+                contentLength: 17,
+              },
             } as unknown as In_Resp;
           }
-          return { method: Methods.FetchArtifact, ok: false, error: 'Artifact not found' } as In_Resp;
+          return { method: Methods.FetchArtifact, ok: false, error: { reason: 'Artifact not found' } } as In_Resp;
 
         default:
-          return { method: event.method as string, ok: false, error: 'Unhandled Out_Req' } as In_Resp;
+          return { method: event.method as string, ok: false, error: { reason: 'Unhandled Out_Req' } } as In_Resp;
       }
     } else {
       // ── Out_Us: record for later assertion ──
@@ -266,7 +270,8 @@ describe('Printer capabilities', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.printers).toEqual(fakePrinters);
+    if (!result.ok) return;
+      expect(result.result.printers).toEqual(fakePrinters);
     ws.close();
   });
 
@@ -276,7 +281,7 @@ describe('Printer capabilities', () => {
       args: { deviceId: UNKNOWN_DEVICE },
     });
     expect(result.ok).toBe(false);
-    expect(result.error).toEqual("Device not connected");
+    expect(result.error.reason).toEqual("Device not connected");
   });
 });
 
@@ -354,7 +359,7 @@ describe('RequestPreFlight', () => {
 
     const result = await execPromise;
     expect(result.ok).toBe(false);
-    expect(result.error).toBe('Insufficient pages for the job');
+    expect(result.error.reason).toBe('Insufficient pages for the job');
     ws.close();
   });
 
@@ -377,7 +382,7 @@ describe('RequestPreFlight', () => {
       args: { ...preflightArgs, deviceId: UNKNOWN_DEVICE },
     });
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/not connected/i);
+    expect(result.error.reason).toMatch(/not connected/i);
   });
 
   /*
@@ -403,7 +408,7 @@ describe('RequestPreFlight', () => {
       args: preflightArgs,
     });
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/timeout/i);
+    expect(result.error.reason).toMatch(/timeout/i);
     ws.close();
   });
 });
@@ -476,7 +481,7 @@ describe('RequestPrint', () => {
       args: { ...printArgs, deviceId: UNKNOWN_DEVICE },
     });
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/not connected/i);
+    expect(result.error.reason).toMatch(/not connected/i);
   });
 
   /*
@@ -502,7 +507,7 @@ describe('RequestPrint', () => {
       args: printArgs,
     });
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/timeout/i);
+    expect(result.error.reason).toMatch(/timeout/i);
     ws.close();
   });
 });

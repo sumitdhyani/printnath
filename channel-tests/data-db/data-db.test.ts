@@ -20,7 +20,7 @@ describe('Owner', () => {
     });
     expect(createResult.ok).toBe(true);
     if (!createResult.ok) return;
-    expect(createResult.data.phone).toBe('+911234567890');
+    expect(createResult.result.phone).toBe('+911234567890');
 
     const getResult = await channel.execute({
       method: Methods.GetOwnerByPhone,
@@ -28,8 +28,8 @@ describe('Owner', () => {
     });
     expect(getResult.ok).toBe(true);
     if (!getResult.ok) return;
-    expect(getResult.data?.phone).toBe('+911234567890');
-    expect(getResult.data?.displayName).toBe('Test Owner');
+    expect(getResult.result?.phone).toBe('+911234567890');
+    expect(getResult.result?.displayName).toBe('Test Owner');
   });
 
   test('get owner by unknown phone returns null', async () => {
@@ -39,7 +39,7 @@ describe('Owner', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toBeNull();
+    expect(result.result).toBeNull();
   });
 });
 
@@ -55,8 +55,8 @@ describe('Gateway', () => {
     });
     expect(createResult.ok).toBe(true);
     if (!createResult.ok) return;
-    expect(createResult.data.deviceId).toBe(DEVICE_ID);
-    expect(createResult.data.lifecycleState).toBe('PRE_ACTIVATION');
+    expect(createResult.result.deviceId).toBe(DEVICE_ID);
+    expect(createResult.result.lifecycleState).toBe('PRE_ACTIVATION');
 
     const getResult = await channel.execute({
       method: Methods.GetGatewayByDeviceId,
@@ -64,7 +64,7 @@ describe('Gateway', () => {
     });
     expect(getResult.ok).toBe(true);
     if (!getResult.ok) return;
-    expect(getResult.data?.deviceId).toBe(DEVICE_ID);
+    expect(getResult.result?.deviceId).toBe(DEVICE_ID);
   });
 
   test('unknown device returns null', async () => {
@@ -74,7 +74,7 @@ describe('Gateway', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toBeNull();
+    expect(result.result).toBeNull();
   });
 
   test('update gateway state from PRE_ACTIVATION to ACTIVATED to OPERATIONAL', async () => {
@@ -86,8 +86,8 @@ describe('Gateway', () => {
     });
     expect(activateResult.ok).toBe(true);
     if (!activateResult.ok) return;
-    expect(activateResult.data.lifecycleState).toBe('ACTIVATED');
-    expect(activateResult.data.deviceToken).toBe('tok-abc');
+    expect(activateResult.result.lifecycleState).toBe('ACTIVATED');
+    expect(activateResult.result.deviceToken).toBe('tok-abc');
 
     const operationalResult = await channel.execute({
       method: Methods.UpdateGatewayState,
@@ -95,8 +95,8 @@ describe('Gateway', () => {
     });
     expect(operationalResult.ok).toBe(true);
     if (!operationalResult.ok) return;
-    expect(operationalResult.data.lifecycleState).toBe('OPERATIONAL');
-    expect(operationalResult.data.isConnected).toBe(true);
+    expect(operationalResult.result.lifecycleState).toBe('OPERATIONAL');
+    expect(operationalResult.result.isConnected).toBe(true);
   });
 
   test('update capabilities', async () => {
@@ -117,7 +117,7 @@ describe('Gateway', () => {
       args: { deviceId: DEVICE_ID },
     });
     if (!getResult.ok) return;
-    expect((getResult.data as any).capabilities?.color).toBe(true);
+    expect((getResult.result as any).capabilities?.color).toBe(true);
   });
 
   test('list gateways by owner', async () => {
@@ -140,7 +140,7 @@ describe('Gateway', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toHaveLength(0);
+    expect(result.result).toHaveLength(0);
   });
 });
 
@@ -165,7 +165,7 @@ describe('Pricing', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Upsert so pricing records exist even if created once
-    expect(result.data.length).toBeGreaterThanOrEqual(2);
+    expect(result.result.length).toBeGreaterThanOrEqual(2);
   });
 
   test('get pricing for owner with no pricing returns empty array', async () => {
@@ -175,7 +175,7 @@ describe('Pricing', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toEqual([]);
+    expect(result.result).toEqual([]);
   });
 });
 
@@ -214,7 +214,7 @@ describe('CustomerSession', () => {
     const createResult = await channel.execute({
       method: Methods.CreateSession,
       args: {
-        gatewayId: gw.data!.id,
+        gatewayId: gw.result!.id,
         sessionToken: SESSION_TOKEN,
         mode: 'ANONYMOUS',
         expiresAt: new Date(Date.now() + 3600000),
@@ -222,7 +222,7 @@ describe('CustomerSession', () => {
     });
     expect(createResult.ok).toBe(true);
     if (!createResult.ok) return;
-    expect((createResult.data as any).sessionToken).toBe(SESSION_TOKEN);
+    expect((createResult.result as any).sessionToken).toBe(SESSION_TOKEN);
 
     const getResult = await channel.execute({
       method: Methods.GetSessionByToken,
@@ -230,7 +230,7 @@ describe('CustomerSession', () => {
     });
     expect(getResult.ok).toBe(true);
     if (!getResult.ok) return;
-    expect(getResult.data?.sessionToken).toBe(SESSION_TOKEN);
+    expect(getResult.result?.sessionToken).toBe(SESSION_TOKEN);
   });
 });
 
@@ -249,8 +249,8 @@ describe('PrintJob', () => {
       args: { deviceId: DEVICE_ID, lifecycleState: 'OPERATIONAL' },
     });
     const gw = await channel.execute({ method: Methods.GetGatewayByDeviceId, args: { deviceId: DEVICE_ID } });
-    if (!gw.ok || !gw.data) throw new Error('Gateway not found');
-    gatewayId = gw.data.id;
+    if (!gw.ok || !gw.result) throw new Error('Gateway not found');
+    gatewayId = gw.result.id;
 
     const sess = await channel.execute({
       method: Methods.CreateSession,
@@ -262,7 +262,7 @@ describe('PrintJob', () => {
       },
     });
     if (!sess.ok) throw new Error('Session not created');
-    sessionId = (sess.data as any).id;
+    sessionId = (sess.result as any).id;
 
     // Create document for JobDocument FK reference
     const doc = await channel.execute({
@@ -278,7 +278,7 @@ describe('PrintJob', () => {
       },
     });
     if (!doc.ok) throw new Error('Document not created');
-    documentId = (doc.data as any).id;
+    documentId = (doc.result as any).id;
   });
 
   test('create print job with nested documents', async () => {
@@ -295,7 +295,7 @@ describe('PrintJob', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect((result.data as any).jobDocuments).toHaveLength(1);
+    expect((result.result as any).jobDocuments).toHaveLength(1);
   });
 
   test('get print job with includeDocuments', async () => {
@@ -313,17 +313,17 @@ describe('PrintJob', () => {
     });
     expect(createResult.ok).toBe(true);
     if (!createResult.ok) return;
-    const jobId = (createResult.data as any).id;
+    const jobId = (createResult.result as any).id;
 
     const resultWithout = await channel.execute({ method: Methods.GetPrintJob, args: { id: jobId } });
     expect(resultWithout.ok).toBe(true);
     if (!resultWithout.ok) return;
-    expect((resultWithout.data as any).jobDocuments).toBeUndefined();
+    expect((resultWithout.result as any).jobDocuments).toBeUndefined();
 
     const resultWith = await channel.execute({ method: Methods.GetPrintJob, args: { id: jobId, includeDocuments: true } });
     expect(resultWith.ok).toBe(true);
     if (!resultWith.ok) return;
-    expect(resultWith.data?.jobDocuments).toHaveLength(1);
+    expect(resultWith.result?.jobDocuments).toHaveLength(1);
   });
 });
 

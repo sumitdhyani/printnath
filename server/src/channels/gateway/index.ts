@@ -95,7 +95,7 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
       switch (req.method) {
         case Methods.RequestPreFlight: {
           const conn = deviceToConn.get(req.args.deviceId);
-          if (!conn) return { method: req.method, ok: false, error: 'Gateway not connected' };
+          if (!conn) return { method: req.method, ok: false, error: { reason: 'Gateway not connected' } };
 
           wsInfra.send(conn, {
             type: 'text',
@@ -112,15 +112,15 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
           });
 
           if (!preflight.canFulfill) {
-            return { method: req.method, ok: false, error: preflight.reason ?? 'Preflight rejected' };
+            return { method: req.method, ok: false, error: { reason: preflight.reason ?? 'Preflight rejected' } };
           }
 
-          return { method: req.method, ok: true };
+          return { method: req.method, ok: true, result: {} };
         }
 
         case Methods.RequestPrint: {
           const conn = deviceToConn.get(req.args.deviceId);
-          if (!conn) return { method: req.method, ok: false, error: 'Gateway not connected' };
+          if (!conn) return { method: req.method, ok: false, error: { reason: 'Gateway not connected' } };
 
           wsInfra.send(conn, {
             type: 'text',
@@ -141,14 +141,14 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
             pendingAccept.set(req.args.jobId, { resolve, reject, timeout });
           });
 
-          return { method: req.method, ok: true };
+          return { method: req.method, ok: true, result: {} };
         }
 
         case Methods.GetPrinterCapabilities: {
           const printers = deviceCapabilities.get(req.args.deviceId);
           return printers?
-            { method: Methods.GetPrinterCapabilities, ok: true, printers }:
-            { method: Methods.GetPrinterCapabilities, ok: false, error: "Device not connected" };
+            { method: Methods.GetPrinterCapabilities, ok: true, result: { printers } }:
+            { method: Methods.GetPrinterCapabilities, ok: false, error: { reason: "Device not connected" } };
         }
 
         default: {
@@ -157,7 +157,7 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
         }
       }
     } catch (err) {
-      return { method: req.method, ok: false, error: err instanceof Error ? err.message : String(err) };
+      return { method: req.method, ok: false, error: { reason: err instanceof Error ? err.message : String(err) } };
     }
   }
 
@@ -189,9 +189,9 @@ async function handleHttpRequest(
     }) as In_Resp;
 
     if (!gwResp.ok)
-      return await respond({ status: 404, headers: {}, body: `{"error": ${gwResp.error}}`});
+      return await respond({ status: 404, headers: {}, body: `{"error": ${gwResp.error.reason}}`});
 
-    const gw = gwResp as Contract[typeof Methods.RequestDeviceDetails]["result"];
+    const gw = gwResp.result as Contract[typeof Methods.RequestDeviceDetails]["result"];
     const helloResp: HelloResponse = {
       state: gw.lifecycleState as HelloResponse['state'],
       deviceToken: gw.deviceToken ?? undefined,
@@ -242,7 +242,7 @@ async function handleHttpRequest(
       return;
     }
 
-    const artifactData = artifactResp as Contract[typeof Methods.FetchArtifact]["result"];
+    const artifactData = artifactResp.result as Contract[typeof Methods.FetchArtifact]["result"];
     await respond({
       status: 200,
       headers: { 'Content-Type': artifactData.contentType },

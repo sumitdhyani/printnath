@@ -22,13 +22,13 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
         // ── Owner ──
         case Methods.GetOwnerByPhone: {
           const data = await prisma.owner.findUnique({ where: { phone: r.args.phone } });
-          return { method: Methods.GetOwnerByPhone, ok: true, data: data as any };
+          return { method: Methods.GetOwnerByPhone, ok: true, result: data as any };
         }
         case Methods.CreateOwner: {
           const data = await prisma.owner.create({
             data: { phone: r.args.phone, displayName: r.args.displayName ?? null },
           });
-          return { method: Methods.CreateOwner, ok: true, data };
+          return { method: Methods.CreateOwner, ok: true, result: data };
         }
 
         // ── Gateway ──
@@ -36,11 +36,11 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
           const data = await prisma.gateway.create({
             data: { deviceId: r.args.deviceId },
           });
-          return { method: Methods.PreRegisterDevice, ok: true, data };
+          return { method: Methods.PreRegisterDevice, ok: true, result: data };
         }
         case Methods.GetGatewayByDeviceId: {
           const data = await prisma.gateway.findUnique({ where: { deviceId: r.args.deviceId } });
-          return { method: Methods.GetGatewayByDeviceId, ok: true, data };
+          return { method: Methods.GetGatewayByDeviceId, ok: true, result: data };
         }
         case Methods.UpdateGatewayState: {
           const data = await prisma.gateway.update({
@@ -52,18 +52,18 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               ...(r.args.lifecycleState === 'OPERATIONAL' ? { lastHeartbeat: new Date() } : {}),
             },
           });
-          return { method: Methods.UpdateGatewayState, ok: true, data };
+          return { method: Methods.UpdateGatewayState, ok: true, result: data };
         }
         case Methods.ListGatewaysByOwner: {
           const data = await prisma.gateway.findMany({ where: { ownerPhone: r.args.ownerPhone } });
-          return { method: Methods.ListGatewaysByOwner, ok: true, data };
+          return { method: Methods.ListGatewaysByOwner, ok: true, result: data };
         }
         case Methods.UpdateGatewayCapabilities: {
           const data = await prisma.gateway.update({
             where: { deviceId: r.args.deviceId },
             data: { capabilities: r.args.capabilities as object },
           });
-          return { method: Methods.UpdateGatewayCapabilities, ok: true, data };
+          return { method: Methods.UpdateGatewayCapabilities, ok: true, result: data };
         }
 
         // ── Pricing ──
@@ -77,11 +77,11 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
             },
             update: { pricePaise: r.args.pricePaise },
           });
-          return { method: Methods.SetPricing, ok: true, data };
+          return { method: Methods.SetPricing, ok: true, result: data };
         }
         case Methods.GetPricingByOwner: {
           const data = await prisma.pricing.findMany({ where: { ownerPhone: r.args.ownerPhone, isActive: true } });
-          return { method: Methods.GetPricingByOwner, ok: true, data };
+          return { method: Methods.GetPricingByOwner, ok: true, result: data };
         }
 
         // ── Session ──
@@ -94,11 +94,11 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               expiresAt: r.args.expiresAt,
             },
           });
-          return { method: Methods.CreateSession, ok: true, data };
+          return { method: Methods.CreateSession, ok: true, result: data };
         }
         case Methods.GetSessionByToken: {
           const data = await prisma.customerSession.findUnique({ where: { sessionToken: r.args.token } });
-          return { method: Methods.GetSessionByToken, ok: true, data };
+          return { method: Methods.GetSessionByToken, ok: true, result: data };
         }
         case Methods.UpdateSessionAuth: {
           const data = await prisma.customerSession.update({
@@ -109,14 +109,14 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               otpExpiresAt: r.args.otpExpiresAt,
             },
           });
-          return { method: Methods.UpdateSessionAuth, ok: true, data };
+          return { method: Methods.UpdateSessionAuth, ok: true, result: data };
         }
         case Methods.UpdateSessionState: {
           const data = await prisma.customerSession.update({
             where: { id: r.args.sessionId },
             data: { state: r.args.state },
           });
-          return { method: Methods.UpdateSessionState, ok: true, data };
+          return { method: Methods.UpdateSessionState, ok: true, result: data };
         }
 
         // ── Document ──
@@ -132,11 +132,11 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               pageCount: r.args.pageCount ?? null,
             },
           });
-          return { method: Methods.CreateDocument, ok: true, data };
+          return { method: Methods.CreateDocument, ok: true, result: data };
         }
         case Methods.GetDocumentsBySession: {
           const data = await prisma.document.findMany({ where: { sessionToken: r.args.sessionToken } });
-          return { method: Methods.GetDocumentsBySession, ok: true, data };
+          return { method: Methods.GetDocumentsBySession, ok: true, result: data };
         }
 
         // ── Print Job ──
@@ -162,7 +162,7 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
             },
             include: { jobDocuments: true },
           });
-          return { method: Methods.CreatePrintJob, ok: true, data };
+          return { method: Methods.CreatePrintJob, ok: true, result: data };
         }
         case Methods.UpdateJobState: {
           const data = await prisma.printJob.update({
@@ -173,20 +173,20 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               ...(r.args.artifactKey ? { artifactKey: r.args.artifactKey } : {}),
             },
           });
-          return { method: Methods.UpdateJobState, ok: true, data };
+          return { method: Methods.UpdateJobState, ok: true, result: data };
         }
         case Methods.GetPrintJob: {
           const data = await prisma.printJob.findUnique({
             where: { id: r.args.id },
             include: r.args.includeDocuments ? { jobDocuments: true } : undefined,
           });
-          return { method: Methods.GetPrintJob, ok: true, data };
+          return { method: Methods.GetPrintJob, ok: true, result: data };
         }
         case Methods.ListJobsByGateway: {
           const where: Record<string, unknown> = { gatewayId: r.args.gatewayId };
           if (r.args.state) where.state = r.args.state;
           const data = await prisma.printJob.findMany({ where: where as any });
-          return { method: Methods.ListJobsByGateway, ok: true, data };
+          return { method: Methods.ListJobsByGateway, ok: true, result: data };
         }
 
         // ── Payment ──
@@ -198,14 +198,14 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               provider: r.args.provider,
             },
           });
-          return { method: Methods.CreatePayment, ok: true, data };
+          return { method: Methods.CreatePayment, ok: true, result: data };
         }
         case Methods.UpdatePaymentStatus: {
           const data = await prisma.payment.update({
             where: { id: r.args.paymentId },
             data: { status: r.args.status },
           });
-          return { method: Methods.UpdatePaymentStatus, ok: true, data };
+          return { method: Methods.UpdatePaymentStatus, ok: true, result: data };
         }
 
         // ── Audit ──
@@ -219,22 +219,22 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               toState: r.args.toState ?? null,
             },
           });
-          return { method: Methods.AuditLog, ok: true, data: null as any };
+          return { method: Methods.AuditLog, ok: true, result: null as any };
         }
 
         // ── Lifecycle ──
         case Methods.Ping:
-          return { method: Methods.Ping, ok: true, data: null as any };
+          return { method: Methods.Ping, ok: true, result: null as any };
         case Methods.Stop:
           await prisma.$disconnect();
-          return { method: Methods.Stop, ok: true, data: null as any };
+          return { method: Methods.Stop, ok: true, result: null as any };
 
         default: { // keep req as never check
           throw new Error(`Unhandled method: ${(r as any).method}`);
         }
       }
     } catch (err) {
-      return { method: r.method, ok: false, error: err instanceof Error ? err.message : String(err) };
+      return { method: r.method, ok: false, error: { reason: err instanceof Error ? err.message : String(err) } };
     }
   }
 

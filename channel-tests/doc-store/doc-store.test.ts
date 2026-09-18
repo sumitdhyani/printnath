@@ -78,7 +78,9 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.data.storageKey).toBe(TEST_STORAGE_KEY);
+
+      const data = result.result as Contract[typeof Methods.StoreArtifact]["result"]; 
+      expect(data.storageKey).toBe(TEST_STORAGE_KEY);
 
       // Verify PutObjectCommand was called with correct params
       expect(mockSend).toHaveBeenCalledTimes(1);
@@ -113,7 +115,7 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
-      expect(result.error).toContain('Connection refused');
+      expect(result.error.reason).toContain('Connection refused');
     });
   });
 
@@ -153,10 +155,12 @@ describe('DocStore channel', () => {
       });
 
       expect(result.ok).toBe(true);
-      //const res = result as Contract[typeof Methods.GetArtifactStream][""]; 
-      expect(result.data.stream).toBe(fakeStream);
-      expect(result.data.contentType).toBe('application/pdf');
-      expect(result.data.contentLength).toBe(8);
+      if (!result.ok) return;
+      
+      const data = result.result as Contract[typeof Methods.GetArtifactStream]["result"];
+      expect(data.stream).toBe(fakeStream);
+      expect(data.contentType).toBe('application/pdf');
+      expect(data.contentLength).toBe(8);
 
       expect(mockSend).toHaveBeenCalledTimes(1);
       const command = mockSend.mock.calls[0][0];
@@ -189,7 +193,7 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
-      expect(result.error).toContain('NoSuchKey');
+      expect(result.error.reason).toContain('NoSuchKey');
     });
   });
 
@@ -221,7 +225,7 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.data).toEqual({});
+      expect(result.result).toEqual({});
 
       expect(mockSend).toHaveBeenCalledTimes(1);
       const command = mockSend.mock.calls[0][0];
@@ -261,7 +265,9 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.data.exists).toBe(true);
+
+      const data = result.result as Contract[typeof Methods.ArtifactExists]["result"];
+      expect(data.exists).toBe(true);
 
       expect(mockSend).toHaveBeenCalledTimes(1);
       const command = mockSend.mock.calls[0][0];
@@ -296,7 +302,9 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.data.exists).toBe(false);
+
+      const data = result.result as Contract[typeof Methods.ArtifactExists]["result"];
+      expect(data.exists).toBe(false);
     });
 
     /*
@@ -322,7 +330,7 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
-      expect(result.error).toContain('Forbidden');
+      expect(result.error.reason).toContain('Forbidden');
     });
   });
 
@@ -339,7 +347,7 @@ describe('DocStore channel', () => {
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
-      expect(result.error).toContain('Unhandled');
+      expect(result.error.reason).toContain('Unhandled');
     });
   });
 });
