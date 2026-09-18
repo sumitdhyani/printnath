@@ -15,7 +15,7 @@ export type In_Req = {
 }[DocStoreMethods];
 
 export type Out_Resp = {
-  [M in DocStoreMethods]: { method: M; ok: true; result: Contract[M]['result'] };
-}[DocStoreMethods] | { method: string; ok: false; error: { reason: string } };
+  [M in DocStoreMethods]: { method: M; ok: true; result: Contract[M]['result'] } | { method: M; ok: false; error: Contract[M]['error'] };
+}[DocStoreMethods];
 
 export { Methods } from '../../shared/contracts/protocol';

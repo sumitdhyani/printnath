@@ -178,7 +178,7 @@ describe('DocStore channel', () => {
      *   │                                    │
      *   │  S3 returns 404                     │
      *   │                                    │
-     *   │ ← { ok: false, error: "..." }      │
+     *   │ ← { ok: false, result: "..." }      │
      *   │←───────────────────────────────────│
      */
     test('missing artifact returns error', async () => {
@@ -317,7 +317,7 @@ describe('DocStore channel', () => {
      *   │  HeadObjectCommand                 │
      *   │  ← Forbidden (403) — unexpected     │
      *   │                                    │
-     *   │ ← { ok: false, error: "..." }      │
+     *   │ ← { ok: false, result: "..." }      │
      *   │←───────────────────────────────────│
      */
     test('non-404 errors are propagated', async () => {

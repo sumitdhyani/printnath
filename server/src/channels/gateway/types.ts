@@ -24,16 +24,16 @@ export type In_Req = {
 }[GwInMethods];
 
 export type Out_Resp = {
-  [M in GwInMethods]: { method: M; ok: true; result: Contract[M]["result"] };
-}[GwInMethods] | { method: string; ok: false; error: { reason: string } };
+  [M in GwInMethods]: { method: M; ok: true; result: Contract[M]["result"] } | { method: M; ok: false; error: Contract[M]["error"] };
+}[GwInMethods];
 
 export type Out_Req = {
   [M in GwOutMethods]: { method: M; args: Contract[M]['args'] };
 }[GwOutMethods];
 
 export type In_Resp = {
-  [M in GwOutMethods]: { method: M; ok: true; result: Contract[M]["result"] };
-}[GwOutMethods] | { method: string; ok: false; error: { reason: string } };
+  [M in GwOutMethods]: { method: M; ok: true; result: Contract[M]["result"] } | { method: M; ok: false; error: Contract[M]["error"] };
+}[GwOutMethods];
 
 // ── Out_Us: events (fire-and-forget, no response) ──
 

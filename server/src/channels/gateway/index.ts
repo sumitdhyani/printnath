@@ -95,7 +95,7 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
       switch (req.method) {
         case Methods.RequestPreFlight: {
           const conn = deviceToConn.get(req.args.deviceId);
-          if (!conn) return { method: req.method, ok: false, error: { reason: 'Gateway not connected' } };
+          if (!conn) return { method: Methods.RequestPreFlight, ok: false, error: { reason: 'Gateway not connected' } };
 
           wsInfra.send(conn, {
             type: 'text',
@@ -112,15 +112,15 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
           });
 
           if (!preflight.canFulfill) {
-            return { method: req.method, ok: false, error: { reason: preflight.reason ?? 'Preflight rejected' } };
+            return { method: Methods.RequestPreFlight, ok: false, error: { reason: preflight.reason ?? 'Preflight rejected' } };
           }
 
-          return { method: req.method, ok: true, result: {} };
+          return { method: Methods.RequestPreFlight, ok: true, result: {} };
         }
 
         case Methods.RequestPrint: {
           const conn = deviceToConn.get(req.args.deviceId);
-          if (!conn) return { method: req.method, ok: false, error: { reason: 'Gateway not connected' } };
+          if (!conn) return { method: Methods.RequestPrint, ok: false, error: { reason: 'Gateway not connected' } };
 
           wsInfra.send(conn, {
             type: 'text',
@@ -141,7 +141,7 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
             pendingAccept.set(req.args.jobId, { resolve, reject, timeout });
           });
 
-          return { method: req.method, ok: true, result: {} };
+          return { method: Methods.RequestPrint, ok: true, result: {} };
         }
 
         case Methods.GetPrinterCapabilities: {
@@ -157,7 +157,7 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
         }
       }
     } catch (err) {
-      return { method: req.method, ok: false, error: { reason: err instanceof Error ? err.message : String(err) } };
+      return { method: req.method, ok: false, error: { reason: err instanceof Error ? err.message : String(err) } } as Out_Resp;
     }
   }
 

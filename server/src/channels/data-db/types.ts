@@ -35,7 +35,7 @@ export type In_Req = {
 }[DbMethods];
 
 export type Out_Resp = {
-  [M in DbMethods]: { method: M; ok: true; result: Contract[M]['result'] };
-}[DbMethods] | { method: string; ok: false; error: { reason: string } };
+  [M in DbMethods]: { method: M; ok: true; result: Contract[M]['result'] } | { method: M; ok: false; error: Contract[M]['error'] };
+}[DbMethods];
 
 export { Methods } from '../../shared/contracts/protocol';
