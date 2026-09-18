@@ -15,10 +15,12 @@ export type DocStoreDeps = {
     accessKeyId: string;
     secretAccessKey: string;
   };
+  /** Optional mock S3 client for testing. Created from config if omitted. */
+  s3Client?: S3Client;
 };
 
 export async function initDocStore(deps: DocStoreDeps): Promise<DocStoreChannel> {
-  const s3 = new S3Client({
+  const s3 = deps.s3Client ?? new S3Client({
     endpoint: deps.config.endpoint,
     region: deps.config.region,
     credentials: {

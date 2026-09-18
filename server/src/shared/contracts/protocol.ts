@@ -78,7 +78,7 @@ export type JobStatusValue = 'QUEUED' | 'PRINTING' | 'COMPLETED' | 'FAILED';
 // Channels derive In_Req / Out_Resp / Out_Req / In_Resp from this.
 // The Router uses this to type-check cross-channel routing.
 
-export interface Contract {
+export type Contract = {
   // ══════ Gateway In_Req ══════
   [Methods.RequestPreFlight]: {
     args: { deviceId: string; jobId: string; documents: PrintDocument[] };
