@@ -48,6 +48,12 @@ export const Methods = {
   AuditLog: 'auditLog',
   Ping: 'ping',
   Stop: 'stop',
+
+  // ── Payment ──
+  CreateOrder: 'createOrder',
+  VerifyPayment: 'verifyPayment',
+  GetPaymentStatus: 'getPaymentStatus',
+  ProcessRefund: 'processRefund',
 } as const;
 
 // ── Shared types referenced by contracts ──
@@ -254,6 +260,28 @@ export type Contract = {
   [Methods.Stop]: {
     args: {};
     result: {};
+    error: { reason: string };
+  };
+
+  // ══════ Payment ══════
+  [Methods.CreateOrder]: {
+    args: { amountPaise: number; currency?: string; receipt: string; notes?: Record<string, string> };
+    result: { orderId: string; amountPaise: number; amountDue: number; status: string };
+    error: { reason: string };
+  };
+  [Methods.VerifyPayment]: {
+    args: { orderId: string; paymentId: string; signature: string };
+    result: { verified: boolean };
+    error: { reason: string };
+  };
+  [Methods.GetPaymentStatus]: {
+    args: { paymentId: string };
+    result: { paymentId: string; status: string; method?: string; amountPaise: number };
+    error: { reason: string };
+  };
+  [Methods.ProcessRefund]: {
+    args: { paymentId: string; amountPaise?: number };
+    result: { refundId: string; status: string };
     error: { reason: string };
   };
 }
