@@ -11,16 +11,19 @@ No touchscreen kiosk required. The customer's phone is the UI.
 ## Architecture
 
 ```
-                        ┌──────────────┐
-                        │   ROUTER     │
-                        │ (adapter +   │
-                        │  dispatcher) │
-                        └──┬──┬──┬──┬──┘
-                           │  │  │  │
-              ┌────────────┘  │  │  └──────────┐
-              ▼               ▼  ▼             ▼
-        User Channel     Gateway   Data DB    Doc Store
-        (HTTP + WS)      Channel   Channel    (MinIO/S3)
+                    ┌──────────────────────┐
+                    │       ROUTER         │
+                    │  (message dispatcher)│
+                    └──┬────┬────┬──┬─┬────┘
+                       │    │    │  │ │
+              ┌────────┘    │    │  │ └──────────────┐
+              │             │    │  │                │
+              ▼             ▼    ▼  └────────┐       ▼
+              ▲             ▲    ▲           ▼       ▲
+              │             │    │           ▲       │
+              │             │    │           |       │
+        User Channel   Gateway Data DB  Doc Store   Payment
+        (HTTP + WS)    Channel Channel  (MinIO/S3) (Razorpay)
 ```
 
 - **Server:** TypeScript (Node.js), Express, Prisma, PostgreSQL
@@ -122,7 +125,9 @@ Each channel has a contract document describing its in/out types, dependencies, 
 | Channel | Doc | Status |
 |---|---|---|
 | Data DB | [channel-data-db.md](docs/channel-data-db.md) | ✅ Built, tested |
-| Server Gateway | [channel-server-gwy.md](docs/channel-server-gwy.md) | 📄 Designed |
+| Server Gateway | [channel-server-gwy.md](docs/channel-server-gwy.md) | ✅ Built, tested |
+| Doc Store | — | ✅ Built, tested |
+| Payment | [channel-payment.md](docs/channel-payment.md) | ✅ Built, tested |
 
 ## Project Structure
 
