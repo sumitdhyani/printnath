@@ -54,6 +54,19 @@ export const Methods = {
   VerifyPayment: 'verifyPayment',
   GetPaymentStatus: 'getPaymentStatus',
   ProcessRefund: 'processRefund',
+
+  // ── User Channel ──
+  InitiateOwnerOtp: 'initiateOwnerOtp',
+  ActivateGateway: 'activateGateway',
+  SetShopPricing: 'setShopPricing',
+  GetGatewayStatus: 'getGatewayStatus',
+  GetOwnerInfo: 'getOwnerInfo',
+  UploadDocument: 'uploadDocument',
+  GetPricing: 'getPricing',
+  GetSession: 'getSession',
+  InitiateCheckout: 'initiateCheckout',
+  ConfirmPayment: 'confirmPayment',
+  GetJobStatus: 'getJobStatus',
 } as const;
 
 // ── Shared types referenced by contracts ──
@@ -163,7 +176,7 @@ export type Contract = {
     error: { reason: string };
   };
   [Methods.UpdateGatewayState]: {
-    args: { deviceId: string; lifecycleState: string; isConnected?: boolean; deviceToken?: string };
+    args: { deviceId: string; lifecycleState: string; isConnected?: boolean; deviceToken?: string; ownerPhone?: string };
     result: { deviceId: string; lifecycleState: string };
     error: { reason: string };
   };
@@ -282,6 +295,64 @@ export type Contract = {
   [Methods.ProcessRefund]: {
     args: { paymentId: string; amountPaise?: number };
     result: { refundId: string; status: string };
+    error: { reason: string };
+  };
+
+  // ══════ User Channel ══════
+  // Contracts to be refined — see docs/channel-user.md
+  [Methods.InitiateOwnerOtp]: {
+    args: { phone: string };
+    result: { otpRef: string };
+    error: { reason: string };
+  };
+  [Methods.ActivateGateway]: {
+    args: { deviceId: string; phone: string; otp: string; displayName?: string };
+    result: { deviceId: string; lifecycleState: string };
+    error: { reason: string };
+  };
+  [Methods.SetShopPricing]: {
+    args: { ownerPhone: string; pageType: string; pricePaise: number };
+    result: {};
+    error: { reason: string };
+  };
+  [Methods.GetGatewayStatus]: {
+    args: { deviceId: string };
+    result: { deviceId: string; lifecycleState: string; deviceToken?: string };
+    error: { reason: string };
+  };
+  [Methods.GetOwnerInfo]: {
+    args: { shopCode: string };
+    result: { shopCode: string; shopName?: string; lifecycleState: string };
+    error: { reason: string };
+  };
+  [Methods.UploadDocument]: {
+    args: { sessionToken: string; fileName: string; mimeType: string; fileSize: number; body: Readable };
+    result: { documentId: string; storageKey: string };
+    error: { reason: string };
+  };
+  [Methods.GetPricing]: {
+    args: { ownerPhone: string };
+    result: { pricing: { pageType: string; pricePaise: number }[] };
+    error: { reason: string };
+  };
+  [Methods.GetSession]: {
+    args: { sessionToken: string };
+    result: { sessionToken: string; mode: string; state: string };
+    error: { reason: string };
+  };
+  [Methods.InitiateCheckout]: {
+    args: { sessionToken: string; amountPaise: number };
+    result: { orderId: string; amountPaise: number };
+    error: { reason: string };
+  };
+  [Methods.ConfirmPayment]: {
+    args: { sessionToken: string; orderId: string; paymentId: string; signature: string };
+    result: { jobId: string; jobNumber: string };
+    error: { reason: string };
+  };
+  [Methods.GetJobStatus]: {
+    args: { jobId: string };
+    result: { jobId: string; state: string };
     error: { reason: string };
   };
 }

@@ -128,6 +128,7 @@ Each channel has a contract document describing its in/out types, dependencies, 
 | Server Gateway | [channel-server-gwy.md](docs/channel-server-gwy.md) | ✅ Built, tested |
 | Doc Store | — | ✅ Built, tested |
 | Payment | [channel-payment.md](docs/channel-payment.md) | ✅ Built, tested |
+| User Channel | [channel-user.md](docs/channel-user.md) | 📄 Designed |
 
 ## Project Structure
 

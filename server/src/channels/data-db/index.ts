@@ -50,6 +50,7 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
               ...(r.args.isConnected !== undefined ? { isConnected: r.args.isConnected } : {}),
               ...(r.args.deviceToken ? { deviceToken: r.args.deviceToken } : {}),
               ...(r.args.lifecycleState === 'OPERATIONAL' ? { lastHeartbeat: new Date() } : {}),
+              ...(r.args.ownerPhone ? { ownerPhone: r.args.ownerPhone } : {}),
             },
           });
           return { method: Methods.UpdateGatewayState, ok: true, result: data };
