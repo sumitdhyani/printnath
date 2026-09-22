@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import type { Router } from 'express';
-import { Methods, type Out_Us } from './types';
+import {Methods} from './types'
+import type{ Out_Us, Out_Req, In_Resp } from './types';
 
 export type UserChannelDeps = {
-  sendToRouter: (event: { method: string; args: Record<string, unknown> } | Out_Us) => Promise<{ method: string; ok: boolean; result?: unknown; error?: { reason: string } }>;
+  sendToRouter: (event: Out_Req | Out_Us) => Promise<In_Resp | void>;
   httpRouter: Router;
   sendOtp: (phone: string, otp: string) => Promise<void>;
 };
@@ -34,7 +35,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     const gwCheck = await deps.sendToRouter({
       method: Methods.GetGatewayByDeviceId,
       args: { deviceId },
-    });
+    }) as In_Resp;
     if (!gwCheck.ok) {
       throw new Error('Gateway not found');
     }
@@ -69,15 +70,15 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     const ownerResp = await deps.sendToRouter({
       method: Methods.GetOwnerByPhone,
       args: { phone },
-    });
+    }) as In_Resp;
 
     if (!ownerResp.ok || !(ownerResp.result as { phone?: string })?.phone) {
       const createResp = await deps.sendToRouter({
         method: Methods.CreateOwner,
-        args: { phone, displayName: displayName ?? null },
-      });
+        args: { phone, displayName: displayName ?? undefined },
+      }) as In_Resp;
       if (!createResp.ok) {
-        throw new Error('Failed to create owner');
+        throw new Error(createResp.error.reason);
       }
     }
 
@@ -85,10 +86,10 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     const gwResp = await deps.sendToRouter({
       method: Methods.UpdateGatewayState,
       args: { deviceId, lifecycleState: 'ACTIVATED', ownerPhone: phone },
-    });
+    }) as In_Resp;
 
     if (!gwResp.ok) {
-      throw new Error('Failed to activate gateway');
+      throw new Error(gwResp.error.reason);
     }
 
     const gw = gwResp.result as { deviceId: string; lifecycleState: string };
@@ -149,9 +150,9 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       const resp = await deps.sendToRouter({
         method: Methods.SetPricing,
         args: { ownerPhone, pageType: compositeKey, pricePaise: item.pricePaise },
-      });
+      }) as In_Resp;
       if (!resp.ok) {
-        throw new Error(resp.error?.reason ?? 'Failed to set pricing');
+        throw new Error(resp.error.reason);
       }
     }
   }
@@ -187,7 +188,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     const gwResp = await deps.sendToRouter({
       method: Methods.GetGatewayByDeviceId,
       args: { deviceId },
-    });
+    }) as In_Resp;
 
     if (!gwResp.ok || !gwResp.result) {
       res.json({ role: 'unknown', deviceId });
@@ -219,7 +220,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     const capResp = await deps.sendToRouter({
       method: Methods.GetPrinterCapabilities,
       args: { deviceId },
-    });
+    }) as In_Resp;
 
     if (!capResp.ok) {
       res.status(404).json({ error: 'Capabilities not available' });

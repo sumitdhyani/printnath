@@ -8,17 +8,35 @@ import { Methods, type Contract } from '../../shared/contracts/protocol';
 // ── User channel method subset ──
 
 type UserOutMethods =
+  // User channel orchestration methods
   | typeof Methods.InitiateOwnerOtp
   | typeof Methods.ActivateGateway
   | typeof Methods.SetShopPricing
-  | typeof Methods.GetGatewayStatus
-  | typeof Methods.GetOwnerInfo
   | typeof Methods.UploadDocument
-  | typeof Methods.GetPricing
-  | typeof Methods.GetSession
   | typeof Methods.InitiateCheckout
   | typeof Methods.ConfirmPayment
-  | typeof Methods.GetJobStatus;
+  // Downstream data-db methods
+  | typeof Methods.GetGatewayByDeviceId
+  | typeof Methods.GetOwnerByPhone
+  | typeof Methods.CreateOwner
+  | typeof Methods.UpdateGatewayState
+  | typeof Methods.SetPricing
+  | typeof Methods.GetPricingByOwner
+  | typeof Methods.GetSessionByToken
+  | typeof Methods.CreateSession
+  | typeof Methods.CreateDocument
+  | typeof Methods.CreatePrintJob
+  | typeof Methods.GetPrintJob
+  | typeof Methods.CreatePayment
+  // Downstream gateway methods
+  | typeof Methods.GetPrinterCapabilities
+  | typeof Methods.RequestPreFlight
+  | typeof Methods.RequestPrint
+  // Downstream doc-store methods
+  | typeof Methods.StoreArtifact
+  // Downstream payment methods
+  | typeof Methods.CreateOrder
+  | typeof Methods.VerifyPayment;
 
 // ── Derived types ──
 
