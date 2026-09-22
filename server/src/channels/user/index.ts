@@ -32,7 +32,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
   async function initiateOwnerOtp(deviceId: string, phone: string): Promise<{ otpRef: string }> {
     // Check gateway exists and can be activated before spending SMS
     const gwCheck = await deps.sendToRouter({
-      method: 'getGatewayByDeviceId',
+      method: Methods.GetGatewayByDeviceId,
       args: { deviceId },
     });
     if (!gwCheck.ok) {
@@ -136,6 +136,48 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
   });
 
   // ══════════════════════════════════════════════════════════════
+  // SetShopPricing
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Shop owner sets per-configuration prices. The composite key
+  // is built from { pageType, paperSize, duplex } and stored as
+  // a flat pageType string via data-db's setPricing.
+
+  async function setShopPricing(ownerPhone: string, prices: { pageType: string; paperSize: string; duplex: boolean; pricePaise: number }[]): Promise<void> {
+    for (const item of prices) {
+      const compositeKey = `${item.pageType}|${item.duplex ? 'duplex' : 'single'}|${item.paperSize}`;
+      const resp = await deps.sendToRouter({
+        method: Methods.SetPricing,
+        args: { ownerPhone, pageType: compositeKey, pricePaise: item.pricePaise },
+      });
+      if (!resp.ok) {
+        throw new Error(resp.error?.reason ?? 'Failed to set pricing');
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // Set Pricing
+  // ══════════════════════════════════════════════════════════════
+
+  deps.httpRouter.post('/owner/:phone/pricing', async (req, res) => {
+    const { phone } = req.params;
+    const { prices } = req.body as { prices?: { pageType: string; paperSize: string; duplex: boolean; pricePaise: number }[] };
+
+    if (!prices || !Array.isArray(prices)) {
+      res.status(400).json({ error: 'Missing prices array' });
+      return;
+    }
+
+    try {
+      await setShopPricing(phone, prices);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: { reason: err instanceof Error ? err.message : 'Unknown error' } });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
   // Gateway Status (QR code entry point)
   // ══════════════════════════════════════════════════════════════
 
@@ -143,7 +185,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     const { deviceId } = req.params;
 
     const gwResp = await deps.sendToRouter({
-      method: 'getGatewayByDeviceId',
+      method: Methods.GetGatewayByDeviceId,
       args: { deviceId },
     });
 
@@ -175,7 +217,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     const { deviceId } = req.params;
 
     const capResp = await deps.sendToRouter({
-      method: 'getPrinterCapabilities',
+      method: Methods.GetPrinterCapabilities,
       args: { deviceId },
     });
 

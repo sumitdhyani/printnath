@@ -1,5 +1,48 @@
 # Gateway Registration Process
 
+## 0. WiFi Setup (First Boot / Recovery)
+
+The gateway uses a single WiFi chip (Raspberry Pi Zero 2 W built-in). It supports two modes:
+
+- **Station mode (client):** Connects to an existing WiFi network (normal operation)
+- **AP mode (access point):** Broadcasts its own WiFi network (for setup/recovery)
+
+### Boot Flow
+
+```
+Gateway boots
+  ├── Saved WiFi credentials exist?
+  │     ├── Yes → try to connect for 60 seconds (retry every 5s)
+  │     │         ├── Success → HELLO to server (normal operation)
+  │     │         └── Fail → start AP mode + captive portal
+  │     └── No → start AP mode + captive portal immediately
+  │
+  └── In AP mode:
+        ├── Broadcasts SSID "PrintNath-XXXX"
+        ├── Serves captive portal at 192.168.4.1
+        ├── Captive portal: lists nearby WiFi networks, owner selects + enters password
+        ├── Owner submits → stores credentials, reboots in station mode
+        └── Every 5 minutes: silently retry saved credentials
+              ├── Success → switch to station mode, HELLO
+              └── Fail → stay in AP mode
+```
+
+### Why 60-second retry before AP mode?
+
+Handles transient outages (power cut, router reboot). Most router reboots complete within 60 seconds. Without this delay, a power cut would unnecessarily trigger AP mode.
+
+### Captive Portal
+
+When connected to the gateway's AP, any HTTP request from the phone is redirected to the gateway's built-in web server. This triggers the phone's captive portal popup automatically (standard iOS/Android behavior).
+
+### Reconfiguration
+
+If WiFi password changes or router is replaced:
+1. Gateway fails to connect → retries for 60s → fails → enters AP mode
+2. Owner sees "PrintNath-XXXX" in phone WiFi list
+3. Connects to it → captive portal opens → enters new WiFi credentials
+4. Gateway reboots, connects with new credentials, HELLO to server
+
 ## 1. Device Preparation
 
 Before shipping/installing the gateway:
