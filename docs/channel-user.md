@@ -431,3 +431,25 @@ Browser                  User Channel               Router              Data DB
   │ 200 { jobId, state }      │                      │                    │
   │←───────────────────────────│                      │                    │
 ```
+
+## API Endpoints
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| `GET` | `/gateway/:deviceId` | — | QR entry point. Returns `{ role, deviceId, state }` |
+| `GET` | `/gateway/:deviceId/capabilities` | — | Printer capabilities (via gateway channel) |
+| `POST` | `/activate/send-otp` | `{ deviceId, phone }` | Send OTP to owner phone |
+| `POST` | `/activate/:deviceId` | `{ phone, otp, displayName? }` | Verify OTP + activate gateway |
+
+All responses: `{ ok: true, result: ... }` or `{ ok: false, error: { reason } }`.
+
+### QR Code Resolution
+
+```
+QR → GET /gateway/{deviceId}
+
+role: 'activation' → Show activation form (PRE_ACTIVATION)
+role: 'customer'   → Show customer print UI (OPERATIONAL)
+role: 'setup'      → Show "Gateway not ready" (ACTIVATED etc.)
+role: 'unknown'    → Show "Invalid QR" (not found)
+```
