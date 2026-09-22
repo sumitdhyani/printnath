@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import type { Router } from 'express';
-import type { Out_Us } from './types';
+import { Methods, type Out_Us } from './types';
 
 export type UserChannelDeps = {
   sendToRouter: (event: { method: string; args: Record<string, unknown> } | Out_Us) => Promise<{ method: string; ok: boolean; result?: unknown; error?: { reason: string } }>;
@@ -18,10 +18,6 @@ const otpStore = new Map<string, { hash: string; expiresAt: number }>();
 export async function initUserChannel(deps: UserChannelDeps): Promise<UserChannel> {
   // ── Helpers ──
 
-  function generateOtp(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
   function hashOtp(otp: string): string {
     return crypto.createHash('sha256').update(otp).digest('hex');
   }
@@ -29,9 +25,26 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
   // ══════════════════════════════════════════════════════════════
   // InitiateOwnerOtp
   // ══════════════════════════════════════════════════════════════
+  //
+  // First verifies the gateway exists and is activatable,
+  // then generates + sends OTP. Never waste SMS on a bad deviceId.
 
-  async function initiateOwnerOtp(phone: string): Promise<{ otpRef: string }> {
-    const otp = generateOtp();
+  async function initiateOwnerOtp(deviceId: string, phone: string): Promise<{ otpRef: string }> {
+    // Check gateway exists and can be activated before spending SMS
+    const gwCheck = await deps.sendToRouter({
+      method: 'getGatewayByDeviceId',
+      args: { deviceId },
+    });
+    if (!gwCheck.ok) {
+      throw new Error('Gateway not found');
+    }
+    const gwState = (gwCheck.result as { lifecycleState?: string })?.lifecycleState;
+    if (gwState !== 'PRE_ACTIVATION' && gwState !== undefined) {
+      throw new Error(`Gateway is ${gwState}, not in PRE_ACTIVATION`);
+    }
+
+    // Generate + store + send OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const hash = hashOtp(otp);
 
     await deps.sendOtp(phone, otp);
@@ -44,7 +57,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
   // ActivateGateway
   // ══════════════════════════════════════════════════════════════
 
-  async function activateGateway(deviceId: string, phone: string, otp: string, displayName?: string): Promise<{ deviceId: string; lifecycleState: string }> {
+  async function activateGateway(deviceId: string, phone: string, otp: string, displayName?: string): Promise<{ deviceId: string; lifecycleState: string }>{
     // Step 1: Verify OTP
     const entry = otpStore.get(phone);
     if (!entry || entry.expiresAt < Date.now() || entry.hash !== hashOtp(otp)) {
@@ -54,13 +67,13 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
     // Step 2: Look up or create owner
     const ownerResp = await deps.sendToRouter({
-      method: 'getOwnerByPhone',
+      method: Methods.GetOwnerByPhone,
       args: { phone },
     });
 
     if (!ownerResp.ok || !(ownerResp.result as { phone?: string })?.phone) {
       const createResp = await deps.sendToRouter({
-        method: 'createOwner',
+        method: Methods.CreateOwner,
         args: { phone, displayName: displayName ?? null },
       });
       if (!createResp.ok) {
@@ -70,7 +83,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
     // Step 3: Set gateway to ACTIVATED
     const gwResp = await deps.sendToRouter({
-      method: 'updateGatewayState',
+      method: Methods.UpdateGatewayState,
       args: { deviceId, lifecycleState: 'ACTIVATED', ownerPhone: phone },
     });
 
@@ -84,21 +97,25 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
   // ── HTTP Routes ──
 
+  // Invoked when the user pushed the send-otp button
   deps.httpRouter.post('/activate/send-otp', async (req, res) => {
-    const { phone } = req.body as { phone?: string };
-    if (!phone) {
-      res.status(400).json({ error: 'Missing phone' });
+    const { deviceId, phone } = req.body as { deviceId?: string; phone?: string };
+    if (!deviceId || !phone) {
+      res.status(400).json({ error: 'Missing deviceId or phone' });
       return;
     }
 
     try {
-      const result = await initiateOwnerOtp(phone);
+      const result = await initiateOwnerOtp(deviceId, phone);
       res.json({ ok: true, result });
     } catch (err) {
-      res.status(500).json({ ok: false, error: { reason: err instanceof Error ? err.message : 'Unknown error' } });
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      const status = message.includes('not found') || message.includes('not in') ? 400 : 500;
+      res.status(status).json({ ok: false, error: { reason: message } });
     }
   });
 
+  // Invoked when the user enters the otp
   deps.httpRouter.post('/activate/:deviceId', async (req, res) => {
     const { deviceId } = req.params;
     const { phone, otp, displayName } = req.body as { phone?: string; otp?: string; displayName?: string };
@@ -116,6 +133,58 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       const status = message.includes('OTP') ? 401 : 500;
       res.status(status).json({ ok: false, error: { reason: message } });
     }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // Gateway Status (QR code entry point)
+  // ══════════════════════════════════════════════════════════════
+
+  deps.httpRouter.get('/gateway/:deviceId', async (req, res) => {
+    const { deviceId } = req.params;
+
+    const gwResp = await deps.sendToRouter({
+      method: 'getGatewayByDeviceId',
+      args: { deviceId },
+    });
+
+    if (!gwResp.ok || !gwResp.result) {
+      res.json({ role: 'unknown', deviceId });
+      return;
+    }
+
+    const gw = gwResp.result as { deviceId: string; lifecycleState?: string; ownerPhone?: string; shopName?: string };
+
+    switch (gw.lifecycleState) {
+      case 'PRE_ACTIVATION':
+        res.json({ role: 'activation', deviceId, state: gw.lifecycleState });
+        break;
+      case 'OPERATIONAL':
+        res.json({ role: 'customer', deviceId, state: gw.lifecycleState, shopName: gw.shopName ?? null });
+        break;
+      default:
+        res.json({ role: 'setup', deviceId, state: gw.lifecycleState ?? 'UNKNOWN' });
+        break;
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // Printer Capabilities
+  // ══════════════════════════════════════════════════════════════
+
+  deps.httpRouter.get('/gateway/:deviceId/capabilities', async (req, res) => {
+    const { deviceId } = req.params;
+
+    const capResp = await deps.sendToRouter({
+      method: 'getPrinterCapabilities',
+      args: { deviceId },
+    });
+
+    if (!capResp.ok) {
+      res.status(404).json({ error: 'Capabilities not available' });
+      return;
+    }
+
+    res.json({ ok: true, result: capResp.result });
   });
 
   // ── Public API ──
