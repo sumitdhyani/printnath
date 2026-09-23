@@ -28,6 +28,7 @@ type UserOutMethods =
   | typeof Methods.CreatePrintJob
   | typeof Methods.GetPrintJob
   | typeof Methods.CreatePayment
+  | typeof Methods.UpdateSessionMetadata
   // Downstream gateway methods
   | typeof Methods.GetPrinterCapabilities
   | typeof Methods.RequestPreFlight

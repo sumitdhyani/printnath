@@ -18,6 +18,7 @@ type DbMethods =
   | typeof Methods.GetSessionByToken
   | typeof Methods.UpdateSessionAuth
   | typeof Methods.UpdateSessionState
+  | typeof Methods.UpdateSessionMetadata
   | typeof Methods.CreateDocument
   | typeof Methods.GetDocumentsBySession
   | typeof Methods.CreatePrintJob

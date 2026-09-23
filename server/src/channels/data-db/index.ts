@@ -98,7 +98,7 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
           return { method: Methods.CreateSession, ok: true, result: data };
         }
         case Methods.GetSessionByToken: {
-          const data = await prisma.customerSession.findUnique({ where: { sessionToken: r.args.token } });
+          const data = await prisma.customerSession.findFirst({ where: { sessionToken: r.args.token, expiresAt: { gt: new Date() } } });
           return { method: Methods.GetSessionByToken, ok: true, result: data };
         }
         case Methods.UpdateSessionAuth: {
@@ -118,6 +118,13 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
             data: { state: r.args.state },
           });
           return { method: Methods.UpdateSessionState, ok: true, result: data };
+        }
+        case Methods.UpdateSessionMetadata: {
+          const data = await prisma.customerSession.update({
+            where: { id: r.args.sessionId },
+            data: { metadata: r.args.metadata },
+          });
+          return { method: Methods.UpdateSessionMetadata, ok: true, result: data };
         }
 
         // ── Document ──

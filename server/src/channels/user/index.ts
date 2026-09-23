@@ -342,12 +342,19 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     }
 
     // Verify session exists before creating order
+    // Security again with fake api calls with bogus tokens
     const sessionResp = await deps.sendToRouter({
       method: Methods.GetSessionByToken,
       args: { token },
     }) as In_Resp;
 
     if (!sessionResp.ok || !sessionResp.result) {
+      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
+      return;
+    }
+
+    const session = sessionResp.result as Contract[typeof Methods.GetSessionByToken]['result'];
+    if (!session) {
       res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
       return;
     }
@@ -364,7 +371,76 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     }
 
     const order = orderResp.result as Contract[typeof Methods.CreateOrder]['result'];
+
+    // Persist order info on session for upload-time verification
+    await deps.sendToRouter({
+      method: Methods.UpdateSessionMetadata,
+      args: { sessionId: session.id, metadata: { orderId: order.orderId, amountPaise: order.amountPaise } },
+    }) as In_Resp;
+
     res.json({ ok: true, result: { orderId: order.orderId, amountPaise: order.amountPaise } });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // ConfirmPayment
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Razorpay redirects back after payment. Verify signature + amount.
+  // Job + payment records created in UploadDocument (§11).
+
+  deps.httpRouter.post('/session/:token/confirm', async (req, res) => {
+    const { token } = req.params;
+    const { orderId, paymentId, signature, amountPaise } = req.body as {
+      orderId?: string; paymentId?: string; signature?: string; amountPaise?: number;
+    };
+
+    if (!orderId || !paymentId || !signature || !amountPaise) {
+      res.status(400).json({ ok: false, error: { reason: 'Missing orderId, paymentId, signature, or amountPaise' } });
+      return;
+    }
+
+    // Step 1: resolve session → verify it exists, read stored order info
+    const sessionResp = await deps.sendToRouter({
+      method: Methods.GetSessionByToken,
+      args: { token },
+    }) as In_Resp;
+
+    if (!sessionResp.ok || !sessionResp.result) {
+      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
+      return;
+    }
+
+    const session = sessionResp.result as Contract[typeof Methods.GetSessionByToken]['result'];
+    if (!session) {
+      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
+      return;
+    }
+
+    // Step 2: verify FE-sent amount matches what was stored at checkout
+    const storedAmount = (session.metadata as Record<string, unknown> | null | undefined)?.amountPaise as number | undefined;
+    if (storedAmount !== amountPaise) {
+      res.status(400).json({ ok: false, error: { reason: 'Amount mismatch' } });
+      return;
+    }
+
+    // Step 3: verify Razorpay signature via payment channel
+    const verifyResp = await deps.sendToRouter({
+      method: Methods.VerifyPayment,
+      args: { orderId, paymentId, signature },
+    }) as In_Resp;
+
+    if (!verifyResp.ok) {
+      res.status(401).json({ ok: false, error: { reason: verifyResp.error.reason } });
+      return;
+    }
+
+    // Persist payment confirmation on session
+    await deps.sendToRouter({
+      method: Methods.UpdateSessionMetadata,
+      args: { sessionId: session.id, metadata: { orderId, paymentId, verifiedAt: new Date().toISOString() } },
+    }) as In_Resp;
+
+    res.json({ ok: true, result: { verified: true } });
   });
 
   // ── Public API ──

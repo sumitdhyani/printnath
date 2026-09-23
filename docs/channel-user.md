@@ -34,8 +34,8 @@ The user channel is unique — it has **no In_Req** (router never asks it to do 
 | `getOwnerInfo` | `{ shopCode }` | `{ shopCode, shopName?, lifecycleState }` | Customer QR scan |
 | `getSession` | `{ sessionToken }` | `{ id, sessionToken, mode }` | Session check |
 | `initiateCheckout` | `{ sessionToken, amountPaise }` | `{ orderId, amountPaise }` | Customer taps Pay |
-| `confirmPayment` | `{ sessionToken, orderId, paymentId, signature }` | `{ jobId, jobNumber }` | Payment callback |
-| `uploadDocument` | `{ sessionToken, fileName, mimeType, fileSize, body }` | `{ documentId, storageKey }` | Customer file upload |
+| `confirmPayment` | `{ sessionToken, orderId, paymentId, signature }` | `{ verified: true }` | Payment callback |
+| `uploadDocument` | `{ sessionToken, files + printConfig }` | `{ jobId, jobNumber }` | Upload + create job |
 | `getJobStatus` | `{ jobId }` | `{ jobId, state }` | Status polling |
 
 ### Downstream Methods Called via Router
@@ -47,7 +47,7 @@ The user channel delegates to these existing channel methods through the router:
 - `createOwner` — register shop owner
 - `updateGatewayState` — transition gateway lifecycle
 - `setPricing` / `getPricingByOwner` — pricing CRUD
-- `createSession` / `getSessionByToken` / `updateSessionState` — session mgmt
+- `createSession` / `getSessionByToken` / `updateSessionState` / `updateSessionMetadata` — session mgmt
 - `createDocument` / `getDocumentsBySession` — document records
 - `createPrintJob` / `getPrintJob` / `updateJobState` — job lifecycle
 - `createPayment` / `updatePaymentStatus` — payment records
@@ -342,14 +342,22 @@ Browser                  User Channel              Router           Payment    D
   │                            │                      │    amount }    │          │
   │                            │←─────────────────────│←──────────────│          │
   │                            │                      │                │          │
-  │ 200 { orderId,             │                      │                │          │
-  │       amountPaise }         │                      │                │          │
-  │←───────────────────────────│                      │                │          │
+  │ Step 2: Persist order      │                      │                │          │
+  │         on session         │                      │                │          │
+  │                            │ Out_Req(UpdateSessionMetadata)         │
+  │                            │ { orderId, amountPaise }               │
+  │                            │─────────────────────→│──────────────→│
+  │                            │                      │← { id }       │
+  │                            │←─────────────────────│←──────────────│
+  │                            │                      │                │
+  │ 200 { orderId,             │                      │                │
+  │       amountPaise }         │                      │                │
+  │←───────────────────────────│                      │                │
 ```
 
 **Notes:**
 - Browser receives orderId, opens Razorpay checkout on phone
-- Customer enters UPI details on Razorpay's UI
+- orderId + amountPaise persisted on session metadata for upload-time verification
 
 ---
 
@@ -357,86 +365,131 @@ Browser                  User Channel              Router           Payment    D
 
 **Trigger:** Razorpay redirects back to our site after customer pays.
 
+**Purpose:** Verify Razorpay signature, FE-sent amount matches stored order, persist payment confirmation. Job + payment records created later in UploadDocument (§11).
+
 ```
 Browser                  User Channel              Router           Payment    Data DB
   │                            │                      │                │          │
   │ POST /session/{token}/     │                      │                │          │
   │      confirm               │                      │                │          │
   │ { orderId, paymentId,      │                      │                │          │
-  │   signature }              │                      │                │          │
+  │   signature, amountPaise }  │                      │                │          │
   │───────────────────────────→│                      │                │          │
   │                            │                      │                │          │
-  │ Step 1: Verify signature   │                      │                │          │
-  │                            │ Out_Req(VerifyPayment)                │          │
-  │                            │─────────────────────→│──────────────→│          │
-  │                            │                      │← { verified }  │          │
-  │                            │←─────────────────────│←──────────────│          │
-  │                            │                      │                │          │
-  │ ── if !verified ──         │                      │                │          │
-  │ 401 { error }              │                      │                │          │
+  │ Step 1: Resolve session    │                      │                │          │
+  │                            │ Out_Req(GetSessionByToken)             │          │
+  │                            │─────────────────────→│──────────────→│
+  │                            │                      │← { metadata    │
+  │                            │                      │  { amountPaise }}│
+  │                            │←─────────────────────│←──────────────│
+  │                            │                      │                │
+  │ ── if session not found ── │                      │                │
+  │ 404 { error }              │                      │                │
   │←───────────────────────────│                      │                │
-  │                            │                      │                │          │
-  │ Step 2: Create print job   │                      │                │
-  │         (state: PAID,      │                      │                │
-  │          docs pending)     │                      │                │
-  │                            │ Out_Req(CreatePrintJob)               │
-  │                            │─────────────────────→│──────────────→│─────────→│
-  │                            │                      │                │← { id }
-  │                            │←─────────────────────│←──────────────│←────────│
   │                            │                      │                │
-  │ Step 3: Create payment     │                      │                │
-  │         record in data-db  │                      │                │
-  │                            │ Out_Req(CreatePayment)                │
-  │                            │─────────────────────→│──────────────→│─────────→│
-  │                            │                      │                │← { id }
-  │                            │←─────────────────────│←──────────────│←────────│
+  │ Step 2: Verify amount      │                      │                │
+  │         matches stored     │                      │                │
+  │ (session.metadata.amount   │                      │                │
+  │  === body.amountPaise)     │                      │                │
   │                            │                      │                │
-  │ 200 { jobId, jobNumber }   │                      │                │
+  │ ── if mismatch ──          │                      │                │
+  │ 400 { error }              │                      │                │
+  │←───────────────────────────│                      │                │
+  │                            │                      │                │
+  │ Step 3: Verify signature   │                      │                │
+  │                            │ Out_Req(VerifyPayment)                │
+  │                            │─────────────────────→│──────────────→
+  │                            │                      │← { verified }
+  │                            │←─────────────────────│←──────────────
+  │                            │                      │                │
+  │ ── if !verified ──         │                      │                │
+  │ 401 { error }              │                      │                │
+  │←───────────────────────────│                      │                │
+  │                            │                      │                │
+  │ Step 4: Persist payment    │                      │                │
+  │         confirmation       │                      │                │
+  │                            │ Out_Req(UpdateSessionMetadata)        │
+  │                            │ { paymentId,         │                │
+  │                            │   verifiedAt }        │                │
+  │                            │─────────────────────→│──────────────→│
+  │                            │                      │← { id }       │
+  │                            │←─────────────────────│←──────────────│
+  │                            │                      │                │
+  │ 200 { verified: true }     │                      │                │
   │←───────────────────────────│                      │                │
 ```
 
 **Notes:**
 - Signature verification prevents payment forgery (HMAC SHA256)
-- Print job created in PAID state, documents filled after upload (§12)
-- Gateway dispatch happens server-side after all documents uploaded
+- FE-sent amountPaise compared against value stored at checkout (authoritative)
+- No job or payment record created here — deferred to upload (§11)
+- FE proceeds to upload documents + print config automatically
 
 ---
 
 ### 11. UploadDocument (Post-Payment)
 
-**Trigger:** After payment confirmed, customer uploads file(s). Documents are now linked to the paid job.
+**Trigger:** After payment confirmed, FE automatically uploads file(s) + print config.
+Creates print job, records payment, dispatches to gateway.
 
 ```
-Browser                  User Channel             Router         Doc Store    Data DB
-  │                            │                      │               │            │
-  │ POST /session/{token}/     │                      │               │            │
-  │      upload                │                      │               │            │
-  │ (multipart file)           │                      │               │            │
-  │───────────────────────────→│                      │               │            │
-  │                            │                      │               │            │
-  │ Step 1: Store raw doc      │                      │               │            │
-  │         in MinIO/S3        │                      │               │            │
-  │                            │ Out_Req(StoreArtifact)               │            │
-  │                            │─────────────────────→│──────────────→│            │
-  │                            │                      │← storageKey   │            │
-  │                            │←─────────────────────│←──────────────│            │
-  │                            │                      │               │            │
-  │ Step 2: Create doc record  │                      │               │            │
-  │         in data-db         │                      │               │            │
-  │                            │ Out_Req(CreateDocument)              │            │
-  │                            │─────────────────────→│──────────────→│───────────→│
-  │                            │                      │               │← { id }    │
-  │                            │←─────────────────────│←──────────────│←──────────│
-  │                            │                      │               │            │
-  │ 200 { documentId,          │                      │               │            │
-  │       storageKey }          │                      │               │            │
-  │←───────────────────────────│                      │               │            │
+Browser                  User Channel             Router         Doc Store    Data DB    Gateway
+  │                            │                      │               │            │          │
+  │ POST /session/{token}/     │                      │               │            │          │
+  │      upload                │                      │               │            │          │
+  │ (multipart files +         │                      │               │            │          │
+  │  print config)             │                      │               │            │          │
+  │───────────────────────────→│                      │               │            │          │
+  │                            │                      │               │            │          │
+  │ Step 1: Store doc(s)       │                      │               │            │          │
+  │         in S3              │                      │               │            │          │
+  │                            │ Out_Req(StoreArtifact)               │            │          │
+  │                            │─────────────────────→│──────────────→│            │          │
+  │                            │                      │← storageKey   │            │          │
+  │                            │←─────────────────────│←──────────────│            │          │
+  │                            │                      │               │            │          │
+  │ Step 2: Create doc record  │                      │               │            │          │
+  │                            │ Out_Req(CreateDocument)              │            │          │
+  │                            │─────────────────────→│──────────────→│───────────→│          │
+  │                            │                      │               │← { id }    │          │
+  │                            │←─────────────────────│←──────────────│←──────────│          │
+  │                            │                      │               │            │          │
+  │ Step 3: Create print job   │                      │               │            │          │
+  │         with docs + config │                      │               │            │          │
+  │                            │ Out_Req(CreatePrintJob)              │            │          │
+  │                            │─────────────────────→│──────────────→│───────────→│          │
+  │                            │                      │               │← { jobId,  │          │
+  │                            │                      │               │   jobNumber}│          │
+  │                            │←─────────────────────│←──────────────│←──────────│          │
+  │                            │                      │               │            │          │
+  │ Step 4: Record payment     │                      │               │            │          │
+  │         in data-db         │                      │               │            │          │
+  │                            │ Out_Req(CreatePayment)               │            │          │
+  │                            │─────────────────────→│──────────────→│───────────→│          │
+  │                            │                      │               │← { id }    │          │
+  │                            │←─────────────────────│←──────────────│←──────────│          │
+  │                            │                      │               │            │          │
+  │ Step 5: Dispatch to        │                      │               │            │          │
+  │         gateway            │                      │               │            │          │
+  │                            │ Out_Req(RequestPreFlight)             │            │          │
+  │                            │─────────────────────→│──────────────→│───────────→│─────────→│
+  │                            │                      │               │            │← { ok }  │
+  │                            │←─────────────────────│←──────────────│←──────────│←────────│
+  │                            │                      │               │            │          │
+  │                            │ Out_Req(RequestPrint)                │            │          │
+  │                            │─────────────────────→│──────────────→│───────────→│─────────→│
+  │                            │                      │               │            │← { ok }  │
+  │                            │←─────────────────────│←──────────────│←──────────│←────────│
+  │                            │                      │               │            │          │
+  │ 200 { jobId, jobNumber }   │                      │               │            │          │
+  │←───────────────────────────│                      │               │            │          │
 ```
 
 **Notes:**
-- File uploaded to S3 via doc-store, metadata recorded in data-db
-- After all docs uploaded, gateway dispatch occurs server-side
-- Page count extraction: v1 uses default (e.g. 1 page), future uses PDF parser
+- FE uploads automatically after Razorpay confirm callback
+- Print config (pageType, copies, duplex, paper size) sent with upload
+- CreatePrintJob creates job + JobDocument join records atomically
+- Gateway dispatch happens immediately — no separate step needed
 
 ---
 
