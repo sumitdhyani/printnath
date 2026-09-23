@@ -32,10 +32,10 @@ The user channel is unique — it has **no In_Req** (router never asks it to do 
 | `setShopPricing` | `{ ownerPhone, pageType, pricePaise }` | `{}` | Owner pricing setup |
 | `getGatewayStatus` | `{ deviceId }` | `{ deviceId, lifecycleState, deviceToken? }` | Activation page load |
 | `getOwnerInfo` | `{ shopCode }` | `{ shopCode, shopName?, lifecycleState }` | Customer QR scan |
-| `uploadDocument` | `{ sessionToken, fileName, mimeType, fileSize, body }` | `{ documentId, storageKey }` | Customer file upload |
 | `getSession` | `{ sessionToken }` | `{ id, sessionToken, mode }` | Session check |
 | `initiateCheckout` | `{ sessionToken, amountPaise }` | `{ orderId, amountPaise }` | Customer taps Pay |
 | `confirmPayment` | `{ sessionToken, orderId, paymentId, signature }` | `{ jobId, jobNumber }` | Payment callback |
+| `uploadDocument` | `{ sessionToken, fileName, mimeType, fileSize, body }` | `{ documentId, storageKey }` | Customer file upload |
 | `getJobStatus` | `{ jobId }` | `{ jobId, state }` | Status polling |
 
 ### Downstream Methods Called via Router
@@ -232,46 +232,7 @@ Browser                  User Channel               Router              Data DB
 
 ---
 
-### 6. UploadDocument
-
-**Trigger:** Customer selects a file on their phone and uploads.
-
-```
-Browser                  User Channel             Router         Doc Store    Data DB
-  │                            │                      │               │            │
-  │ POST /session/{token}/     │                      │               │            │
-  │      upload                │                      │               │            │
-  │ (multipart file)           │                      │               │            │
-  │───────────────────────────→│                      │               │            │
-  │                            │                      │               │            │
-  │ Step 1: Store raw doc      │                      │               │            │
-  │         in MinIO/S3        │                      │               │            │
-  │                            │ Out_Req(StoreArtifact)               │            │
-  │                            │─────────────────────→│──────────────→│            │
-  │                            │                      │← storageKey   │            │
-  │                            │←─────────────────────│←──────────────│            │
-  │                            │                      │               │            │
-  │ Step 2: Create doc record  │                      │               │            │
-  │         in data-db         │                      │               │            │
-  │                            │ Out_Req(CreateDocument)              │            │
-  │                            │─────────────────────→│──────────────→│───────────→│
-  │                            │                      │               │← { id }    │
-  │                            │←─────────────────────│←──────────────│←──────────│
-  │                            │                      │               │            │
-  │ 200 { documentId,          │                      │               │            │
-  │       storageKey }          │                      │               │            │
-  │←───────────────────────────│                      │               │            │
-```
-
-**Notes:**
-- File stream piped directly to S3 via doc-store channel
-- Document metadata (name, mime type, size, source='browser') stored in data-db
-- Page count extraction: for v1, use a default (e.g. 1 page) or skip
-- Future: use PDF parser to extract actual page count
-
----
-
-### 7. GetPricing
+### 6. GetPricing
 
 **Trigger:** Customer scans QR, browser loads pricing to show per-page costs.
 
@@ -307,7 +268,7 @@ Browser                  User Channel               Router              Data DB
 
 ---
 
-### 8. CreateSession
+### 7. CreateSession
 
 **Trigger:** Browser loads customer UI after QR scan, creates a session for subsequent upload/checkout flows.
 
@@ -340,7 +301,7 @@ Browser                  User Channel               Router              Data DB
 
 ---
 
-### 9. GetSession
+### 8. GetSession
 
 **Trigger:** Browser polls session state, or redirect requires session data.
 
@@ -361,7 +322,7 @@ Browser                  User Channel               Router              Data DB
 
 ---
 
-### 10. InitiateCheckout
+### 9. InitiateCheckout
 
 **Trigger:** Customer taps "Pay Now" after configuring.
 
@@ -392,63 +353,90 @@ Browser                  User Channel              Router           Payment    D
 
 ---
 
-### 11. ConfirmPayment
+### 10. ConfirmPayment
 
 **Trigger:** Razorpay redirects back to our site after customer pays.
 
 ```
-Browser                  User Channel              Router           Payment    Data DB   Gateway
-  │                            │                      │                │          │          │
-  │ POST /session/{token}/     │                      │                │          │          │
-  │      confirm               │                      │                │          │          │
-  │ { orderId, paymentId,      │                      │                │          │          │
-  │   signature }              │                      │                │          │          │
-  │───────────────────────────→│                      │                │          │          │
-  │                            │                      │                │          │          │
-  │ Step 1: Verify signature   │                      │                │          │          │
-  │                            │ Out_Req(VerifyPayment)                │          │          │
-  │                            │─────────────────────→│──────────────→│          │          │
-  │                            │                      │← { verified }  │          │          │
-  │                            │←─────────────────────│←──────────────│          │          │
-  │                            │                      │                │          │          │
-  │ ── if !verified ──         │                      │                │          │          │
-  │ 401 { error }              │                      │                │          │          │
-  │←───────────────────────────│                      │                │          │          │
-  │                            │                      │                │          │          │
-  │ Step 2: Create print job   │                      │                │          │          │
-  │         in data-db         │                      │                │          │          │
-  │                            │ Out_Req(CreatePrintJob)               │          │          │
-  │                            │─────────────────────→│──────────────→│─────────→│          │
-  │                            │                      │                │← { id }  │          │
-  │                            │←─────────────────────│←──────────────│←────────│          │
-  │                            │                      │                │          │          │
-  │ Step 3: Create payment     │                      │                │          │          │
-  │         record in data-db  │                      │                │          │          │
-  │                            │ Out_Req(CreatePayment)                │          │          │
-  │                            │─────────────────────→│──────────────→│─────────→│          │
-  │                            │                      │                │← { id }  │          │
-  │                            │←─────────────────────│←──────────────│←────────│          │
-  │                            │                      │                │          │          │
-  │ Step 4: Dispatch job to    │                      │                │          │          │
-  │         gateway            │                      │                │          │          │
-  │                            │ Out_Req(RequestPreFlight)             │          │          │
-  │                            │─────────────────────→│──────────────→│─────────→│─────────→│
-  │                            │                      │                │          │← { ok } │
-  │                            │←─────────────────────│←──────────────│←────────│←────────│
-  │                            │                      │                │          │          │
-  │                            │ Out_Req(RequestPrint)                 │          │          │
-  │                            │─────────────────────→│──────────────→│─────────→│─────────→│
-  │                            │                      │                │          │← { ok } │
-  │                            │←─────────────────────│←──────────────│←────────│←────────│
-  │                            │                      │                │          │          │
-  │ 200 { jobId, jobNumber }   │                      │                │          │          │
-  │←───────────────────────────│                      │                │          │          │
+Browser                  User Channel              Router           Payment    Data DB
+  │                            │                      │                │          │
+  │ POST /session/{token}/     │                      │                │          │
+  │      confirm               │                      │                │          │
+  │ { orderId, paymentId,      │                      │                │          │
+  │   signature }              │                      │                │          │
+  │───────────────────────────→│                      │                │          │
+  │                            │                      │                │          │
+  │ Step 1: Verify signature   │                      │                │          │
+  │                            │ Out_Req(VerifyPayment)                │          │
+  │                            │─────────────────────→│──────────────→│          │
+  │                            │                      │← { verified }  │          │
+  │                            │←─────────────────────│←──────────────│          │
+  │                            │                      │                │          │
+  │ ── if !verified ──         │                      │                │          │
+  │ 401 { error }              │                      │                │          │
+  │←───────────────────────────│                      │                │
+  │                            │                      │                │          │
+  │ Step 2: Create print job   │                      │                │
+  │         (state: PAID,      │                      │                │
+  │          docs pending)     │                      │                │
+  │                            │ Out_Req(CreatePrintJob)               │
+  │                            │─────────────────────→│──────────────→│─────────→│
+  │                            │                      │                │← { id }
+  │                            │←─────────────────────│←──────────────│←────────│
+  │                            │                      │                │
+  │ Step 3: Create payment     │                      │                │
+  │         record in data-db  │                      │                │
+  │                            │ Out_Req(CreatePayment)                │
+  │                            │─────────────────────→│──────────────→│─────────→│
+  │                            │                      │                │← { id }
+  │                            │←─────────────────────│←──────────────│←────────│
+  │                            │                      │                │
+  │ 200 { jobId, jobNumber }   │                      │                │
+  │←───────────────────────────│                      │                │
 ```
 
 **Notes:**
 - Signature verification prevents payment forgery (HMAC SHA256)
-- Print job state: CREATED → PREFLIGHT_PENDING → DISPATCHED → ACCEPTED → PRINTING → COMPLETED
-- Preflight lets gateway check it can fulfill the job before dispatch
+- Print job created in PAID state, documents filled after upload (§12)
+- Gateway dispatch happens server-side after all documents uploaded
+
+---
+
+### 11. UploadDocument (Post-Payment)
+
+**Trigger:** After payment confirmed, customer uploads file(s). Documents are now linked to the paid job.
+
+```
+Browser                  User Channel             Router         Doc Store    Data DB
+  │                            │                      │               │            │
+  │ POST /session/{token}/     │                      │               │            │
+  │      upload                │                      │               │            │
+  │ (multipart file)           │                      │               │            │
+  │───────────────────────────→│                      │               │            │
+  │                            │                      │               │            │
+  │ Step 1: Store raw doc      │                      │               │            │
+  │         in MinIO/S3        │                      │               │            │
+  │                            │ Out_Req(StoreArtifact)               │            │
+  │                            │─────────────────────→│──────────────→│            │
+  │                            │                      │← storageKey   │            │
+  │                            │←─────────────────────│←──────────────│            │
+  │                            │                      │               │            │
+  │ Step 2: Create doc record  │                      │               │            │
+  │         in data-db         │                      │               │            │
+  │                            │ Out_Req(CreateDocument)              │            │
+  │                            │─────────────────────→│──────────────→│───────────→│
+  │                            │                      │               │← { id }    │
+  │                            │←─────────────────────│←──────────────│←──────────│
+  │                            │                      │               │            │
+  │ 200 { documentId,          │                      │               │            │
+  │       storageKey }          │                      │               │            │
+  │←───────────────────────────│                      │               │            │
+```
+
+**Notes:**
+- File uploaded to S3 via doc-store, metadata recorded in data-db
+- After all docs uploaded, gateway dispatch occurs server-side
+- Page count extraction: v1 uses default (e.g. 1 page), future uses PDF parser
 
 ---
 

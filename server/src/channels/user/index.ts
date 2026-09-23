@@ -325,6 +325,48 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     res.json({ ok: true, result: pricing });
   });
 
+  // ══════════════════════════════════════════════════════════════
+  // InitiateCheckout
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Customer taps Pay → create Razorpay order.
+  // Amount calculated on FE from pricing + user config (pageType, copies, etc.).
+
+  deps.httpRouter.post('/session/:token/checkout', async (req, res) => {
+    const { token } = req.params;
+    const { amountPaise } = req.body as { amountPaise?: number };
+
+    if (!amountPaise || amountPaise <= 0) {
+      res.status(400).json({ ok: false, error: { reason: 'Invalid amountPaise' } });
+      return;
+    }
+
+    // Verify session exists before creating order
+    const sessionResp = await deps.sendToRouter({
+      method: Methods.GetSessionByToken,
+      args: { token },
+    }) as In_Resp;
+
+    if (!sessionResp.ok || !sessionResp.result) {
+      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
+      return;
+    }
+
+    // Create Razorpay order via payment channel
+    const orderResp = await deps.sendToRouter({
+      method: Methods.CreateOrder,
+      args: { amountPaise, receipt: token },
+    }) as In_Resp;
+
+    if (!orderResp.ok) {
+      res.status(500).json({ ok: false, error: { reason: orderResp.error.reason } });
+      return;
+    }
+
+    const order = orderResp.result as Contract[typeof Methods.CreateOrder]['result'];
+    res.json({ ok: true, result: { orderId: order.orderId, amountPaise: order.amountPaise } });
+  });
+
   // ── Public API ──
 
   return {
