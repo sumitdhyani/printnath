@@ -33,8 +33,7 @@ The user channel is unique — it has **no In_Req** (router never asks it to do 
 | `getGatewayStatus` | `{ deviceId }` | `{ deviceId, lifecycleState, deviceToken? }` | Activation page load |
 | `getOwnerInfo` | `{ shopCode }` | `{ shopCode, shopName?, lifecycleState }` | Customer QR scan |
 | `uploadDocument` | `{ sessionToken, fileName, mimeType, fileSize, body }` | `{ documentId, storageKey }` | Customer file upload |
-| `getPricing` | `{ ownerPhone }` | `{ pricing: [...] }` | Customer pricing view |
-| `getSession` | `{ sessionToken }` | `{ sessionToken, mode, state }` | Session check |
+| `getSession` | `{ sessionToken }` | `{ id, sessionToken, mode }` | Session check |
 | `initiateCheckout` | `{ sessionToken, amountPaise }` | `{ orderId, amountPaise }` | Customer taps Pay |
 | `confirmPayment` | `{ sessionToken, orderId, paymentId, signature }` | `{ jobId, jobNumber }` | Payment callback |
 | `getJobStatus` | `{ jobId }` | `{ jobId, state }` | Status polling |
@@ -274,19 +273,24 @@ Browser                  User Channel             Router         Doc Store    Da
 
 ### 7. GetPricing
 
-**Trigger:** Customer sees pricing after docs are uploaded.
+**Trigger:** Customer scans QR, browser loads pricing to show per-page costs.
 
 ```
 Browser                  User Channel               Router              Data DB
   │                            │                      │                    │
-  │ GET /session/{token}/      │                      │                    │
+  │ GET /gateway/{deviceId}/   │                      │                    │
   │      pricing               │                      │                    │
   │───────────────────────────→│                      │                    │
-  │                            │ (lookup session →    │                    │
-  │                            │  get gatewayId →     │                    │
-  │                            │  get gateway →       │                    │
-  │                            │  get ownerPhone)     │                    │
   │                            │                      │                    │
+  │ Step 1: Resolve deviceId   │                      │                    │
+  │         → ownerPhone       │                      │                    │
+  │                            │ Out_Req(GetGatewayByDeviceId)             │
+  │                            │─────────────────────→│───────────────────→│
+  │                            │                      │← { ownerPhone }    │
+  │                            │←─────────────────────│←──────────────────│
+  │                            │                      │                    │
+  │ Step 2: Get pricing        │                      │                    │
+  │         by ownerPhone      │                      │                    │
   │                            │ Out_Req(GetPricingByOwner)               │
   │                            │─────────────────────→│───────────────────→│
   │                            │                      │← pricing array    │
@@ -297,12 +301,46 @@ Browser                  User Channel               Router              Data DB
 ```
 
 **Notes:**
+- No session needed — browser already has deviceId from QR scan
+- ownerPhone never exposed to browser, resolved server-side
 - Returns all available page types + prices for this shop
-- Browser displays prices so customer can configure within budget
 
 ---
 
-### 8. GetSession
+### 8. CreateSession
+
+**Trigger:** Browser loads customer UI after QR scan, creates a session for subsequent upload/checkout flows.
+
+```
+Browser                  User Channel               Router              Data DB
+  │                            │                      │                    │
+  │ POST /session              │                      │                    │
+  │ { gatewayId }              │                      │                    │
+  │───────────────────────────→│                      │                    │
+  │                            │ Generate sessionToken│                    │
+  │                            │ (UUID)               │                    │
+  │                            │                      │                    │
+  │                            │ Out_Req(CreateSession)                   │
+  │                            │ { gatewayId,          │                    │
+  │                            │   sessionToken,       │                    │
+  │                            │   mode: 'customer',   │                    │
+  │                            │   expiresAt }          │                    │
+  │                            │─────────────────────→│───────────────────→│
+  │                            │                      │← { id,             │
+  │                            │                      │    sessionToken }  │
+  │                            │←─────────────────────│←──────────────────│
+  │                            │                      │                    │
+  │ 200 { id, sessionToken }  │                      │                    │
+  │←───────────────────────────│                      │                    │
+```
+
+**Notes:**
+- sessionToken is the handle for all subsequent customer calls
+- TTL configured via `sessionTtlMs` in `UserChannelDeps`
+
+---
+
+### 9. GetSession
 
 **Trigger:** Browser polls session state, or redirect requires session data.
 
@@ -316,14 +354,14 @@ Browser                  User Channel               Router              Data DB
   │                            │                      │← session record   │
   │                            │←─────────────────────│←──────────────────│
   │                            │                      │                    │
-  │ 200 { sessionToken, mode,  │                      │                    │
-  │       state }               │                      │                    │
+  │ 200 { id, sessionToken,    │                      │                    │
+  │       mode }               │                      │                    │
   │←───────────────────────────│                      │                    │
 ```
 
 ---
 
-### 9. InitiateCheckout
+### 10. InitiateCheckout
 
 **Trigger:** Customer taps "Pay Now" after configuring.
 
@@ -354,7 +392,7 @@ Browser                  User Channel              Router           Payment    D
 
 ---
 
-### 10. ConfirmPayment
+### 11. ConfirmPayment
 
 **Trigger:** Razorpay redirects back to our site after customer pays.
 
@@ -414,7 +452,7 @@ Browser                  User Channel              Router           Payment    D
 
 ---
 
-### 11. GetJobStatus
+### 12. GetJobStatus
 
 **Trigger:** Browser polls to show "Printing..." / "Done!" status.
 
@@ -438,8 +476,12 @@ Browser                  User Channel               Router              Data DB
 |--------|------|------|-------------|
 | `GET` | `/gateway/:deviceId` | — | QR entry point. Returns `{ role, deviceId, state }` |
 | `GET` | `/gateway/:deviceId/capabilities` | — | Printer capabilities (via gateway channel) |
+| `GET` | `/gateway/:deviceId/pricing` | — | Customer pricing. Resolves deviceId → owner → pricing |
 | `POST` | `/activate/send-otp` | `{ deviceId, phone }` | Send OTP to owner phone |
 | `POST` | `/activate/:deviceId` | `{ phone, otp, displayName? }` | Verify OTP + activate gateway |
+| `POST` | `/owner/:phone/pricing` | `{ prices: [...] }` | Shop owner sets per-configuration prices |
+| `POST` | `/session` | `{ gatewayId }` | Create customer session, returns `{ id, sessionToken }` |
+| `GET` | `/session/:token` | — | Get session state |
 
 All responses: `{ ok: true, result: ... }` or `{ ok: false, error: { reason } }`.
 

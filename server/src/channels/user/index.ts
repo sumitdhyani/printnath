@@ -1,12 +1,13 @@
 import crypto from 'crypto';
 import type { Router } from 'express';
 import {Methods} from './types'
-import type{ Out_Us, Out_Req, In_Resp } from './types';
+import type{ Out_Us, Out_Req, In_Resp, Contract } from './types';
 
 export type UserChannelDeps = {
   sendToRouter: (event: Out_Req | Out_Us) => Promise<In_Resp | void>;
   httpRouter: Router;
   sendOtp: (phone: string, otp: string) => Promise<void>;
+  sessionTtlMs: number;
 };
 
 export type UserChannel = {
@@ -17,6 +18,9 @@ export type UserChannel = {
 const otpStore = new Map<string, { hash: string; expiresAt: number }>();
 
 export async function initUserChannel(deps: UserChannelDeps): Promise<UserChannel> {
+  // ── Config ──
+  const sessionTtlMs = deps.sessionTtlMs;
+
   // ── Helpers ──
 
   function hashOtp(otp: string): string {
@@ -39,7 +43,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     if (!gwCheck.ok) {
       throw new Error('Gateway not found');
     }
-    const gwState = (gwCheck.result as { lifecycleState?: string })?.lifecycleState;
+    const gwState = (gwCheck.result as Contract[typeof Methods.GetGatewayByDeviceId]['result'])?.lifecycleState;
     if (gwState !== 'PRE_ACTIVATION' && gwState !== undefined) {
       throw new Error(`Gateway is ${gwState}, not in PRE_ACTIVATION`);
     }
@@ -72,7 +76,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       args: { phone },
     }) as In_Resp;
 
-    if (!ownerResp.ok || !(ownerResp.result as { phone?: string })?.phone) {
+    if (!ownerResp.ok || !(ownerResp.result as Contract[typeof Methods.GetOwnerByPhone]['result'])?.phone) {
       const createResp = await deps.sendToRouter({
         method: Methods.CreateOwner,
         args: { phone, displayName: displayName ?? undefined },
@@ -92,7 +96,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       throw new Error(gwResp.error.reason);
     }
 
-    const gw = gwResp.result as { deviceId: string; lifecycleState: string };
+    const gw = gwResp.result as Contract[typeof Methods.UpdateGatewayState]['result'];
     return { deviceId: gw.deviceId, lifecycleState: gw.lifecycleState };
   }
 
@@ -195,17 +199,17 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       return;
     }
 
-    const gw = gwResp.result as { deviceId: string; lifecycleState?: string; ownerPhone?: string; shopName?: string };
+    const gw = gwResp.result as Contract[typeof Methods.GetGatewayByDeviceId]['result'];
 
-    switch (gw.lifecycleState) {
+    switch (gw?.lifecycleState) {
       case 'PRE_ACTIVATION':
         res.json({ role: 'activation', deviceId, state: gw.lifecycleState });
         break;
       case 'OPERATIONAL':
-        res.json({ role: 'customer', deviceId, state: gw.lifecycleState, shopName: gw.shopName ?? null });
+        res.json({ role: 'customer', deviceId, state: gw.lifecycleState, shopName: gw.name ?? null });
         break;
       default:
-        res.json({ role: 'setup', deviceId, state: gw.lifecycleState ?? 'UNKNOWN' });
+        res.json({ role: 'setup', deviceId, state: gw?.lifecycleState ?? 'UNKNOWN' });
         break;
     }
   });
@@ -228,6 +232,97 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     }
 
     res.json({ ok: true, result: capResp.result });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // Create Customer Session
+  // ══════════════════════════════════════════════════════════════
+
+  deps.httpRouter.post('/session', async (req, res) => {
+    const { gatewayId } = req.body as { gatewayId?: string };
+    if (!gatewayId) {
+      res.status(400).json({ ok: false, error: { reason: 'Missing gatewayId' } });
+      return;
+    }
+
+    const sessionToken = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + sessionTtlMs);
+
+    const resp = await deps.sendToRouter({
+      method: Methods.CreateSession,
+      args: { gatewayId, sessionToken, mode: 'customer', expiresAt },
+    }) as In_Resp;
+
+    if (!resp.ok) {
+      res.status(500).json({ ok: false, error: { reason: resp.error.reason } });
+      return;
+    }
+
+    const result = resp.result as Contract[typeof Methods.CreateSession]['result'];
+    res.json({ ok: true, result });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // Get Session
+  // ══════════════════════════════════════════════════════════════
+
+  deps.httpRouter.get('/session/:token', async (req, res) => {
+    const { token } = req.params;
+
+    const resp = await deps.sendToRouter({
+      method: Methods.GetSessionByToken,
+      args: { token },
+    }) as In_Resp;
+
+    if (!resp.ok) {
+      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
+      return;
+    }
+
+    const result = resp.result as Contract[typeof Methods.GetSessionByToken]['result'];
+    res.json({ ok: true, result });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // Get Pricing (customer-facing, keyed by deviceId)
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Resolves deviceId → ownerPhone → pricing array.
+  // No session needed — browser already has deviceId from QR scan.
+
+  deps.httpRouter.get('/gateway/:deviceId/pricing', async (req, res) => {
+    const { deviceId } = req.params;
+
+    // Step 1: resolve gateway → ownerPhone
+    const gwResp = await deps.sendToRouter({
+      method: Methods.GetGatewayByDeviceId,
+      args: { deviceId },
+    }) as In_Resp;
+
+    if (!gwResp.ok) {
+      res.status(404).json({ ok: false, error: { reason: 'Gateway not found' } });
+      return;
+    }
+
+    const gw = gwResp.result as Contract[typeof Methods.GetGatewayByDeviceId]['result'];
+    if (!gw || !gw.ownerPhone) {
+      res.status(400).json({ ok: false, error: { reason: 'Gateway has no owner' } });
+      return;
+    }
+
+    // Step 2: get pricing for this owner
+    const pricingResp = await deps.sendToRouter({
+      method: Methods.GetPricingByOwner,
+      args: { ownerPhone: gw.ownerPhone },
+    }) as In_Resp;
+
+    if (!pricingResp.ok) {
+      res.status(500).json({ ok: false, error: { reason: pricingResp.error.reason } });
+      return;
+    }
+
+    const pricing = pricingResp.result as Contract[typeof Methods.GetPricingByOwner]['result'];
+    res.json({ ok: true, result: pricing });
   });
 
   // ── Public API ──

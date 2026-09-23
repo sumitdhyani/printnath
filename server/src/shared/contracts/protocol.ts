@@ -172,7 +172,7 @@ export type Contract = {
   };
   [Methods.GetGatewayByDeviceId]: {
     args: { deviceId: string };
-    result: { deviceId: string; lifecycleState?: string; deviceToken?: string | null } | null;
+    result: { deviceId: string; lifecycleState?: string; deviceToken?: string | null; ownerPhone?: string | null; name?: string | null } | null;
     error: { reason: string };
   };
   [Methods.UpdateGatewayState]: {
