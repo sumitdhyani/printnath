@@ -188,10 +188,11 @@ async function handleHttpRequest(
       args: { deviceId: body.deviceId}
     }) as In_Resp;
 
-    if (!gwResp.ok)
-      return await respond({ status: 404, headers: {}, body: `{"error": ${gwResp.error.reason}}`});
+    if (!gwResp.ok) return await respond({ status: 404, headers: {}, body: `{"error": ${gwResp.error.reason}}`});
 
-    const gw = gwResp.result as Contract[typeof Methods.RequestDeviceDetails]["result"];
+    const gw = gwResp.result as Contract[typeof Methods.RequestDeviceDetails]['result'];
+    if (!gw) return await respond({ status: 404, headers: {}, body: `{"error": "Non-existent gateway"}`});
+
     const helloResp: HelloResponse = {
       state: gw.lifecycleState as HelloResponse['state'],
       deviceToken: gw.deviceToken ?? undefined,

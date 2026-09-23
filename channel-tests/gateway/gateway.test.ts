@@ -3,7 +3,7 @@ import { WebSocket } from 'ws';
 import { Readable } from 'node:stream';
 import { initGatewayChannel, type GatewayChannel, type GatewayDeps } from '../../server/src/channels/gateway/index';
 import { Methods } from '../../server/src/channels/gateway/types';
-import type { Out_Req, Out_Us, In_Resp, PrinterInfo } from '../../server/src/channels/gateway/types';
+import type { Out_Req, Out_Us, In_Resp, PrinterInfo, Contract } from '../../server/src/channels/gateway/types';
 
 // ── Test constants ──
 const TEST_PORT = 18901;
@@ -45,9 +45,10 @@ function createMockDeps(): GatewayDeps & { calls: MockCalls[] } {
   const sendToRouter = async (event: Out_Req | Out_Us): Promise<In_Resp | void> => {
     if ('method' in event) {
       // ── Out_Req: return typed responses ──
-      switch (event.method) {
+      const req = event as Out_Req 
+      switch (req.method) {
         case Methods.RequestDeviceDetails:
-          if (event.args.deviceId === KNOWN_DEVICE) {
+          if (req.args.deviceId === KNOWN_DEVICE) {
             return {
               method: Methods.RequestDeviceDetails,
               ok: true,
@@ -58,16 +59,16 @@ function createMockDeps(): GatewayDeps & { calls: MockCalls[] } {
               },
             } as In_Resp;
           }
-          return { method: event.method as string, ok: false, error: { reason: 'Unknown device' } } as In_Resp;
+          return { method: req.method as string, ok: false, error: { reason: 'Unknown device' } } as In_Resp;
 
         case Methods.ValidateArtifactToken:
-          if (event.args.authToken === VALID_TOKEN) {
+          if (req.args.authToken === VALID_TOKEN) {
             return { method: Methods.ValidateArtifactToken, ok: true, result: { valid: true } } as In_Resp;
           }
-          return { method: event.method as string, ok: false, error: { reason: 'Invalid token' } } as In_Resp;
+          return { method: req.method as string, ok: false, error: { reason: 'Invalid token' } } as In_Resp;
 
         case Methods.FetchArtifact:
-          if (event.args.jobId === TEST_JOB_ID) {
+          if (req.args.jobId === TEST_JOB_ID) {
             return {
               method: Methods.FetchArtifact,
               ok: true,
@@ -80,8 +81,10 @@ function createMockDeps(): GatewayDeps & { calls: MockCalls[] } {
           }
           return { method: Methods.FetchArtifact, ok: false, error: { reason: 'Artifact not found' } } as In_Resp;
 
-        default:
-          return { method: event.method as string, ok: false, error: { reason: 'Unhandled Out_Req' } } as In_Resp;
+        default: {
+          const _exhaustive: never = req;
+          throw new Error(`Unhandled: ${(_exhaustive as any)?.method}`);
+        }
       }
     } else {
       // ── Out_Us: record for later assertion ──
@@ -270,8 +273,10 @@ describe('Printer capabilities', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    if (!result.ok) return;
-      expect(result.result.printers).toEqual(fakePrinters);
+    const data = result.result as Contract[typeof Methods.GetPrinterCapabilities]['result']
+    expect(data).not.toBeNull();
+    if (!data) return;
+    expect(data.printers).toEqual(fakePrinters);
     ws.close();
   });
 
@@ -281,6 +286,7 @@ describe('Printer capabilities', () => {
       args: { deviceId: UNKNOWN_DEVICE },
     });
     expect(result.ok).toBe(false);
+    if (result.ok) return;
     expect(result.error.reason).toEqual("Device not connected");
   });
 });
@@ -359,6 +365,7 @@ describe('RequestPreFlight', () => {
 
     const result = await execPromise;
     expect(result.ok).toBe(false);
+    if(result.ok) return;
     expect(result.error.reason).toBe('Insufficient pages for the job');
     ws.close();
   });
@@ -382,6 +389,7 @@ describe('RequestPreFlight', () => {
       args: { ...preflightArgs, deviceId: UNKNOWN_DEVICE },
     });
     expect(result.ok).toBe(false);
+    if (result.ok) return;
     expect(result.error.reason).toMatch(/not connected/i);
   });
 
@@ -408,6 +416,7 @@ describe('RequestPreFlight', () => {
       args: preflightArgs,
     });
     expect(result.ok).toBe(false);
+    if (result.ok) return;
     expect(result.error.reason).toMatch(/timeout/i);
     ws.close();
   });
@@ -481,6 +490,7 @@ describe('RequestPrint', () => {
       args: { ...printArgs, deviceId: UNKNOWN_DEVICE },
     });
     expect(result.ok).toBe(false);
+    if (result.ok) return;
     expect(result.error.reason).toMatch(/not connected/i);
   });
 
@@ -507,6 +517,7 @@ describe('RequestPrint', () => {
       args: printArgs,
     });
     expect(result.ok).toBe(false);
+    if (result.ok) return;
     expect(result.error.reason).toMatch(/timeout/i);
     ws.close();
   });

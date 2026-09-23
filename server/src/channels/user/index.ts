@@ -43,9 +43,13 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     if (!gwCheck.ok) {
       throw new Error('Gateway not found');
     }
-    const gwState = (gwCheck.result as Contract[typeof Methods.GetGatewayByDeviceId]['result'])?.lifecycleState;
-    if (gwState !== 'PRE_ACTIVATION' && gwState !== undefined) {
-      throw new Error(`Gateway is ${gwState}, not in PRE_ACTIVATION`);
+    const gwStateResult = (gwCheck.result as Contract[typeof Methods.GetGatewayByDeviceId]['result']);
+    if (!gwStateResult) {
+      throw new Error('Gateway not found');
+    }
+    const lifecycleState = gwStateResult.lifecycleState; 
+    if (lifecycleState !== 'PRE_ACTIVATION' && lifecycleState !== undefined) {
+      throw new Error(`Gateway is ${lifecycleState}, not in PRE_ACTIVATION`);
     }
 
     // Generate + store + send OTP
@@ -76,7 +80,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       args: { phone },
     }) as In_Resp;
 
-    if (!ownerResp.ok || !(ownerResp.result as Contract[typeof Methods.GetOwnerByPhone]['result'])?.phone) {
+    if (!ownerResp.ok || !ownerResp.result) {
       const createResp = await deps.sendToRouter({
         method: Methods.CreateOwner,
         args: { phone, displayName: displayName ?? undefined },
@@ -194,14 +198,12 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       args: { deviceId },
     }) as In_Resp;
 
-    if (!gwResp.ok || !gwResp.result) {
-      res.json({ role: 'unknown', deviceId });
-      return;
-    }
+    if (!gwResp.ok) return res.json({ role: 'unknown', deviceId });
 
     const gw = gwResp.result as Contract[typeof Methods.GetGatewayByDeviceId]['result'];
+    if (!gw) return res.json({ role: 'unknown', deviceId });
 
-    switch (gw?.lifecycleState) {
+    switch (gw.lifecycleState) {
       case 'PRE_ACTIVATION':
         res.json({ role: 'activation', deviceId, state: gw.lifecycleState });
         break;
@@ -226,7 +228,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       args: { deviceId },
     }) as In_Resp;
 
-    if (!capResp.ok) {
+    if (!capResp.ok || !capResp.result) {
       res.status(404).json({ error: 'Capabilities not available' });
       return;
     }

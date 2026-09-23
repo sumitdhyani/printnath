@@ -37,6 +37,7 @@ export const Methods = {
   GetSessionByToken: 'getSessionByToken',
   UpdateSessionAuth: 'updateSessionAuth',
   UpdateSessionState: 'updateSessionState',
+  UpdateSessionMetadata: 'updateSessionMetadata',
   CreateDocument: 'createDocument',
   GetDocumentsBySession: 'getDocumentsBySession',
   CreatePrintJob: 'createPrintJob',
@@ -111,14 +112,14 @@ export type Contract = {
   };
   [Methods.GetPrinterCapabilities]: {
     args: { deviceId: string };
-    result: { printers: PrinterInfo[] };
+    result: { printers: PrinterInfo[] } | null;
     error: { reason: string };
   };
 
   // ══════ Gateway Out_Req ══════
   [Methods.RequestDeviceDetails]: {
     args: { deviceId: string };
-    result: { deviceId: string; lifecycleState: string; deviceToken: string | null };
+    result: { deviceId: string; lifecycleState: string; deviceToken: string | null } | null;
     error: { reason: string };
   };
   [Methods.ValidateArtifactToken]: {
@@ -157,7 +158,7 @@ export type Contract = {
   // ══════ Data DB ══════
   [Methods.GetOwnerByPhone]: {
     args: { phone: string };
-    result: { phone?: string; displayName?: string | null };
+    result: { phone: string; displayName?: string | null } | null;
     error: { reason: string };
   };
   [Methods.CreateOwner]: {
@@ -172,7 +173,7 @@ export type Contract = {
   };
   [Methods.GetGatewayByDeviceId]: {
     args: { deviceId: string };
-    result: { deviceId: string; lifecycleState?: string; deviceToken?: string | null; ownerPhone?: string | null; name?: string | null } | null;
+    result: { deviceId: string; lifecycleState: string; deviceToken?: string | null; ownerPhone?: string | null; name?: string | null } | null;
     error: { reason: string };
   };
   [Methods.UpdateGatewayState]: {
@@ -207,7 +208,7 @@ export type Contract = {
   };
   [Methods.GetSessionByToken]: {
     args: { token: string };
-    result: { id: string; sessionToken: string; mode: string } | null;
+    result: { id: string; sessionToken: string; mode: string; gatewayId: string; metadata?: unknown | null } | null;
     error: { reason: string };
   };
   [Methods.UpdateSessionAuth]: {
@@ -216,7 +217,12 @@ export type Contract = {
     error: { reason: string };
   };
   [Methods.UpdateSessionState]: {
-    args: { sessionId: string; state: string };
+    args: { sessionId: string; state: string; metadata?: Record<string, unknown> };
+    result: { id: string };
+    error: { reason: string };
+  };
+  [Methods.UpdateSessionMetadata]: {
+    args: { sessionId: string; metadata: unknown };
     result: { id: string };
     error: { reason: string };
   };
