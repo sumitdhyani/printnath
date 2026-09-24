@@ -298,7 +298,6 @@ describe('Printer capabilities', () => {
 describe('RequestPreFlight', () => {
   const preflightArgs = {
     deviceId: KNOWN_DEVICE,
-    jobId: TEST_JOB_ID,
     documents: [{ pageCount: 4, color: false, duplex: true, paperSize: 'A4' as const, copies: 1 }],
   };
 
@@ -329,8 +328,10 @@ describe('RequestPreFlight', () => {
 
     const msg = await wsMsg;
     expect(msg.type).toBe('PRINT_PREFLIGHT');
+    const reqId = msg.payload.reqId;
+    
 
-    sendWs(ws, 'PRINT_PREFLIGHT_RESPONSE', { jobId: TEST_JOB_ID, canFulfill: true });
+    sendWs(ws, 'PRINT_PREFLIGHT_RESPONSE', { reqId: reqId, canFulfill: true });
 
     const result = await execPromise;
     expect(result.ok).toBe(true);
@@ -354,14 +355,16 @@ describe('RequestPreFlight', () => {
    *   │     error: "Color unavailable" }   │                            │
    *   │←───────────────────────────────────│                            │
    */
-  test('gateway rejects — returns ok:false with reason', async () => {
+  test('gateway rejects → returns ok:false with reason', async () => {
     const ws = new WebSocket(wsUrl(KNOWN_DEVICE));
     await new Promise<void>((resolve) => ws.on('open', resolve));
 
+    const wsMsg = waitForWsMessage(ws);
     const execPromise = channel.execute({ method: Methods.RequestPreFlight, args: preflightArgs });
-    await waitForWsMessage(ws);
 
-    sendWs(ws, 'PRINT_PREFLIGHT_RESPONSE', { jobId: TEST_JOB_ID, canFulfill: false, reason: 'Insufficient pages for the job' });
+    const msg = await wsMsg;
+    const reqId = msg.payload.reqId;
+    sendWs(ws, 'PRINT_PREFLIGHT_RESPONSE', { reqId, canFulfill: false, reason: 'Insufficient pages for the job' });
 
     const result = await execPromise;
     expect(result.ok).toBe(false);

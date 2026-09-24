@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import type { Router } from 'express';
 import {Methods} from './types'
-import type{ Out_Us, Out_Req, In_Resp, Contract } from './types';
+import type{ Out_Us, Out_Req, In_Resp, Contract, PrintDocument } from './types';
+import { ErrorDocument$ } from '@aws-sdk/client-s3';
 
 export type UserChannelDeps = {
   sendToRouter: (event: Out_Req | Out_Us) => Promise<In_Resp | void>;
@@ -336,11 +337,12 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
   deps.httpRouter.post('/session/:token/checkout', async (req, res) => {
     const { token } = req.params;
-    const { amountPaise } = req.body as { amountPaise?: number };
+    const { amountPaise, documents } = req.body as { amountPaise?: number, documents?: PrintDocument[] };
 
     if (!amountPaise || amountPaise <= 0) {
-      res.status(400).json({ ok: false, error: { reason: 'Invalid amountPaise' } });
-      return;
+      return res.status(400).json({ ok: false, error: { reason: 'Invalid amountPaise' } });
+    } else if(!documents || !Array.isArray(documents)) {
+      return res.status(400).json({ ok: false, error: { reason: 'No documents provided or documents in improper fromat' } });
     }
 
     // Verify session exists before creating order
@@ -351,14 +353,17 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     }) as In_Resp;
 
     if (!sessionResp.ok || !sessionResp.result) {
-      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
-      return;
+      return res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
     }
 
     const session = sessionResp.result as Contract[typeof Methods.GetSessionByToken]['result'];
     if (!session) {
-      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
-      return;
+      return res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
+    }
+
+    const preFlightResp = await deps.sendToRouter({method: Methods.RequestPreFlight, args: {deviceId: session.gatewayId, documents: documents }}) as In_Resp;
+    if (!preFlightResp.ok) {
+      return res.status(404).json({ ok: false, error: { reason: 'Printer(s) offline' } });        
     }
 
     // Create Razorpay order via payment channel

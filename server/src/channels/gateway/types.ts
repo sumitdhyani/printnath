@@ -49,24 +49,24 @@ export type Out_Us =
 // These define the on-the-wire format between server and gateway device.
 // ══════════════════════════════════════════════════════════════
 
-export type WsMessageType =
-  | 'HEARTBEAT'
-  | 'PRINT_PREFLIGHT'
-  | 'PRINT_JOB'
-  | 'CAPABILITY_INFO'
-  | 'PRINT_PREFLIGHT_RESPONSE'
-  | 'JOB_ACCEPTED'
-  | 'JOB_STATUS';
+export type HeartbeatBody = { readonly type: 'HEARTBEAT',  ts: string };
+export type CapabilityInfoBody = { readonly type: 'CAPABILITY_INFO', printers: import('../../shared/contracts/protocol').PrinterInfo[] };
+export type PreflightBody = { readonly type: 'PRINT_PREFLIGHT', reqId: string; documents: import('../../shared/contracts/protocol').PrintDocument[] };
+export type PreflightResponseBody = { readonly type: 'PRINT_PREFLIGHT_RESPONSE', reqId: string; canFulfill: boolean; reason?: string };
+export type PrintJobBody = { readonly type: 'PRINT_JOB', jobId: string; artifactUrl: string; authToken: string; documents: import('../../shared/contracts/protocol').PrintDocument[] };
+export type JobAcceptedBody = { readonly type: 'JOB_ACCEPTED', jobId: string };
+export type JobStatusBody = {readonly type: 'JOB_STATUS', jobId: string; status: import('../../shared/contracts/protocol').JobStatusValue; reason?: string; at: string };
 
-export type WsMessage<T = unknown> = { type: WsMessageType; payload: T; timestamp: string };
+export type WSMsgBody = HeartbeatBody |
+    CapabilityInfoBody |
+    PreflightBody |
+    PreflightResponseBody |
+    PrintJobBody |
+    JobAcceptedBody |
+    JobStatusBody; 
 
-export type HeartbeatPayload = { ts: string };
-export type CapabilityInfoPayload = { printers: import('../../shared/contracts/protocol').PrinterInfo[] };
-export type PreflightPayload = { jobId: string; documents: import('../../shared/contracts/protocol').PrintDocument[] };
-export type PreflightResponsePayload = { jobId: string; canFulfill: boolean; reason?: string };
-export type PrintJobPayload = { jobId: string; artifactUrl: string; authToken: string; documents: import('../../shared/contracts/protocol').PrintDocument[] };
-export type JobAcceptedPayload = { jobId: string };
-export type JobStatusPayload = { jobId: string; status: import('../../shared/contracts/protocol').JobStatusValue; reason?: string; at: string };
+export type WsMessage = { payload: WSMsgBody, timestamp: string };
+
 
 // HTTP HELLO
 export type HelloRequest = { deviceId: string; softwareVersion: string };

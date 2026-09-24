@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { start as startHttp } from '../../shared/http-infra/index';
 import { start as startWs, type WsInteractionFunctions } from '../../shared/ws-infra/index';
 import type {
@@ -10,8 +11,9 @@ import type {
   OnConnectionClosed,
 } from '../../shared/http-infra/types';
 import type { WebSocketMessage } from '../../shared/ws-infra/types';
-import type { In_Req, Out_Resp, Out_Req, Out_Us, In_Resp, HelloRequest, HelloResponse, PrinterInfo, CapabilityInfoPayload, JobStatusPayload } from './types';
+import type { In_Req, Out_Resp, Out_Req, Out_Us, In_Resp, HelloRequest, HelloResponse, PrinterInfo, WsMessage, CapabilityInfoBody, JobStatusBody } from './types';
 import { Contract, Methods } from '../../shared/contracts/protocol';
+import { json } from 'express';
 
 export type GatewayDeps = {
   config: { httpPort: number; wsPath: string },
@@ -74,6 +76,13 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
                                 pendingAccept)
   });
 
+  function ws_send(connection: ConnectionObject, message: WsMessage){
+    wsInfra.send(connection, {
+        type: 'text',
+        data: JSON.stringify({...message, type: message.payload.type})
+    });
+  };
+
   // ── Step 2: Create HTTP server with WS upgrade handler ──
   const httpInfra = await startHttp({
     config: { port: deps.config.httpPort },
@@ -97,18 +106,14 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
           const conn = deviceToConn.get(req.args.deviceId);
           if (!conn) return { method: Methods.RequestPreFlight, ok: false, error: { reason: 'Gateway not connected' } };
 
-          wsInfra.send(conn, {
-            type: 'text',
-            data: JSON.stringify({
-              type: 'PRINT_PREFLIGHT',
-              payload: { jobId: req.args.jobId, documents: req.args.documents },
-              timestamp: new Date().toISOString(),
-            }),
-          });
+          const reqId = randomUUID();
+          ws_send(conn, {
+              payload: {type: 'PRINT_PREFLIGHT', reqId: reqId, documents: req.args.documents },
+              timestamp: new Date().toISOString()});
 
           const preflight = await new Promise<{ canFulfill: boolean; reason?: string }>((resolve, reject) => {
             const timeout = setTimeout(() => reject(new Error('Preflight timeout')), PREFLIGHT_TIMEOUT_MS);
-            pendingPreflight.set(req.args.jobId, { resolve, reject, timeout });
+            pendingPreflight.set(reqId, { resolve, reject, timeout });
           });
 
           if (!preflight.canFulfill) {
@@ -122,19 +127,15 @@ export async function initGatewayChannel(deps: GatewayDeps): Promise<GatewayChan
           const conn = deviceToConn.get(req.args.deviceId);
           if (!conn) return { method: Methods.RequestPrint, ok: false, error: { reason: 'Gateway not connected' } };
 
-          wsInfra.send(conn, {
-            type: 'text',
-            data: JSON.stringify({
-              type: 'PRINT_JOB',
+          ws_send(conn, {
               payload: {
+                type: 'PRINT_JOB',
                 jobId: req.args.jobId,
                 artifactUrl: req.args.artifactUrl,
                 authToken: req.args.authToken,
                 documents: req.args.documents,
               },
-              timestamp: new Date().toISOString(),
-            }),
-          });
+              timestamp: new Date().toISOString()});
 
           await new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(() => reject(new Error('Job accept timeout')), JOB_ACCEPT_TIMEOUT_MS);
@@ -283,7 +284,7 @@ async function handleWsMessage(
       break;
 
     case 'CAPABILITY_INFO': {
-      const payload = parsed.payload as CapabilityInfoPayload;
+      const payload = parsed.payload as CapabilityInfoBody;
       for (const [deviceId, c] of deviceToConn) {
         if (c.id === conn.id) {
           deviceCapabilities.set(deviceId, payload.printers);
@@ -294,11 +295,11 @@ async function handleWsMessage(
     }
 
     case 'PRINT_PREFLIGHT_RESPONSE': {
-      const payload = parsed.payload as { jobId: string; canFulfill: boolean; reason?: string };
-      const pending = pendingPreflight.get(payload.jobId);
+      const payload = parsed.payload as { reqId: string; canFulfill: boolean; reason?: string };
+      const pending = pendingPreflight.get(payload.reqId);
       if (pending) {
         clearTimeout(pending.timeout);
-        pendingPreflight.delete(payload.jobId);
+        pendingPreflight.delete(payload.reqId);
         pending.resolve({ canFulfill: payload.canFulfill, reason: payload.reason });
       }
       break;
@@ -316,7 +317,7 @@ async function handleWsMessage(
     }
 
     case 'JOB_STATUS': {
-      const payload = parsed.payload as JobStatusPayload;
+      const payload = parsed.payload as JobStatusBody;
       for (const [deviceId, c] of deviceToConn) {
         if (c.id === conn.id) {
           deps.sendToRouter({
