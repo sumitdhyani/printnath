@@ -1,7 +1,7 @@
 // ===== User Channel types =====
 // Derives Out_Req / In_Resp from the shared Contract.
 
-export type { PrinterInfo } from "../../shared/contracts/protocol";
+export type { PrinterInfo, PrintDocument } from "../../shared/contracts/protocol";
 export { Methods, type Contract } from "../../shared/contracts/protocol";
 import { Methods, type Contract } from '../../shared/contracts/protocol';
 

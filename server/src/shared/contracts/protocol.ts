@@ -101,7 +101,7 @@ export type JobStatusValue = 'QUEUED' | 'PRINTING' | 'COMPLETED' | 'FAILED';
 export type Contract = {
   // ══════ Gateway In_Req ══════
   [Methods.RequestPreFlight]: {
-    args: { deviceId: string; jobId: string; documents: PrintDocument[] };
+    args: { deviceId: string; documents: PrintDocument[] };
     result: {};
     error: { reason: string };
   };

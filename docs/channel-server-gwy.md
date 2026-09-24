@@ -56,7 +56,7 @@ This guarantees method names and shapes stay in sync across all channels.
 
 | Method | Args | Description |
 |---|---|---|
-| `RequestPreFlight` | `{ deviceId, jobId, documents[] }` | Send PRINT_PREFLIGHT to gateway, wait for response. Returns `ok: true` if can fulfill, `ok: false` with reason if rejected |
+| `RequestPreFlight` | `{ deviceId, documents[] }` | Send PRINT_PREFLIGHT to gateway, wait for response. Returns `ok: true` if can fulfill, `ok: false` with reason if rejected |
 | `RequestPrint` | `{ deviceId, jobId, artifactUrl, authToken, documents[] }` | Send PRINT_JOB to gateway, wait for JOB_ACCEPTED. Returns `ok: true` on acceptance |
 | `GetPrinterCapabilities` | `{ deviceId }` | Return cached printer capabilities (from last CAPABILITY_INFO) |
 
@@ -154,8 +154,8 @@ Server validates `deviceToken` before accepting. Once connected:
 |---|---|---|---|
 | Gateway → Server | `HEARTBEAT` | `{ ts }` | Every 30s |
 | Gateway → Server | `CAPABILITY_INFO` | `{ printers: [...] }` | Printer list + capabilities |
-| Server → Gateway | `PRINT_PREFLIGHT` | `{ jobId, requirements }` | Pre-flight check |
-| Gateway → Server | `PRINT_PREFLIGHT_RESPONSE` | `{ jobId, canFulfill, reason? }` | Accept/reject |
+| Server → Gateway | `PRINT_PREFLIGHT` | `{ reqId, documents }` | Pre-flight check |
+| Gateway → Server | `PRINT_PREFLIGHT_RESPONSE` | `{ reqId, canFulfill, reason? }` | Accept/reject |
 | Server → Gateway | `PRINT_JOB` | `{ jobId, artifactUrl, authToken, requirements }` | Authorized job |
 | Gateway → Server | `JOB_ACCEPTED` | `{ jobId }` | Gateway takes responsibility |
 | Gateway → Server | `JOB_STATUS` | `{ jobId, status, reason? }` | QUEUED / PRINTING / COMPLETED / FAILED |
