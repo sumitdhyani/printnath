@@ -55,3 +55,24 @@ export type Out_Us =
   | { event: 'USER_SESSION_CREATED'; payload: { sessionToken: string; gatewayId: string } }
   | { event: 'PAYMENT_COMPLETED'; payload: { jobId: string } }
   | { event: 'USER_ERROR'; payload: { sessionToken: string; error: string } };
+
+
+// Local types
+export type JobDoc = {
+    documentId: string;
+    pageCount: number;
+    copies: number;
+    color: boolean;
+    duplex: boolean;
+    paperSize: string;
+    pricePaise: number
+};
+
+export type PrintCfg = {
+    pageCount: number;
+    copies: number;
+    color: boolean;
+    duplex: boolean;
+    paperSize: string;
+    pricePaise: number
+};

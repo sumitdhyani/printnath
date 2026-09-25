@@ -331,10 +331,22 @@ Browser                  User Channel              Router           Payment    D
   │                            │                      │                │          │
   │ POST /session/{token}/     │                      │                │          │
   │      checkout              │                      │                │          │
-  │ { amountPaise }            │                      │                │          │
+  │ { amountPaise,            │                      │                │          │
+  │   documents[] }            │                      │                │          │
   │───────────────────────────→│                      │                │          │
   │                            │                      │                │          │
-  │ Step 1: Create Razorpay    │                      │                │          │
+  │ Step 1: Preflight check    │                      │                │          │
+  │         with gateway       │                      │                │          │
+  │                            │ Out_Req(RequestPreFlight)             │          │
+  │                            │─────────────────────→│──────────────→│──────────→│
+  │                            │                      │               │← { ok }  │
+  │                            │←─────────────────────│←──────────────│←─────────│
+  │                            │                      │                │          │
+  │ ── if preflight fails ──   │                      │                │          │
+  │ 400 { error }              │                      │                │          │
+  │←───────────────────────────│                      │                │          │
+  │                            │                      │                │          │
+  │ Step 2: Create Razorpay    │                      │                │          │
   │         order              │                      │                │          │
   │                            │ Out_Req(CreateOrder) │                │          │
   │                            │─────────────────────→│──────────────→│          │
@@ -342,10 +354,12 @@ Browser                  User Channel              Router           Payment    D
   │                            │                      │    amount }    │          │
   │                            │←─────────────────────│←──────────────│          │
   │                            │                      │                │          │
-  │ Step 2: Persist order      │                      │                │          │
+  │ Step 3: Persist order      │                      │                │          │
+  │         + checkout docs    │                      │                │          │
   │         on session         │                      │                │          │
   │                            │ Out_Req(UpdateSessionMetadata)         │
-  │                            │ { orderId, amountPaise }               │
+  │                            │ { orderId, amountPaise,               │
+  │                            │   checkoutDocs: documents[] }          │
   │                            │─────────────────────→│──────────────→│
   │                            │                      │← { id }       │
   │                            │←─────────────────────│←──────────────│
@@ -357,7 +371,9 @@ Browser                  User Channel              Router           Payment    D
 
 **Notes:**
 - Browser receives orderId, opens Razorpay checkout on phone
+- `documents[]` includes per-file config (pageCount, copies, color, duplex, paperSize)
 - orderId + amountPaise persisted on session metadata for upload-time verification
+- `checkoutDocs` stored to enable upload-time integrity check — uploaded files must match quoted config
 
 ---
 
@@ -471,10 +487,6 @@ Browser                  User Channel             Router         Doc Store    Da
   │                            │                      │               │            │          │
   │ Step 5: Dispatch to        │                      │               │            │          │
   │         gateway            │                      │               │            │          │
-  │                            │ Out_Req(RequestPreFlight)             │            │          │
-  │                            │─────────────────────→│──────────────→│───────────→│─────────→│
-  │                            │                      │               │            │← { ok }  │
-  │                            │←─────────────────────│←──────────────│←──────────│←────────│
   │                            │                      │               │            │          │
   │                            │ Out_Req(RequestPrint)                │            │          │
   │                            │─────────────────────→│──────────────→│───────────→│─────────→│
@@ -487,9 +499,12 @@ Browser                  User Channel             Router         Doc Store    Da
 
 **Notes:**
 - FE uploads automatically after Razorpay confirm callback
-- Print config (pageType, copies, duplex, paper size) sent with upload
+- Multipart format: `files[N]` + `configs[N]` paired by index. Each config is a JSON string with `{ pageCount, copies, color, duplex, paperSize, pricePaise }`
+- Uploaded configs are validated against `checkoutDocs` stored at checkout time — pageCount, copies, color, duplex, paperSize must all match. Prevents FE from uploading different docs than what was quoted
 - CreatePrintJob creates job + JobDocument join records atomically
-- Gateway dispatch happens immediately — no separate step needed
+- Payment is recorded in DB (`CreatePayment`) linking the Razorpay payment to the newly created job
+- Gateway dispatch uses `RequestPrint` directly — no separate preflight at dispatch time (preflight was already done at checkout)
+- On dispatch failure (gateway offline), job exists in `DISPATCHED` state and will be re-dispatched when gateway reconnects
 
 ---
 
@@ -523,6 +538,10 @@ Browser                  User Channel               Router              Data DB
 | `POST` | `/owner/:phone/pricing` | `{ prices: [...] }` | Shop owner sets per-configuration prices |
 | `POST` | `/session` | `{ gatewayId }` | Create customer session, returns `{ id, sessionToken }` |
 | `GET` | `/session/:token` | — | Get session state |
+| `POST` | `/session/:token/checkout` | `{ amountPaise, documents[] }` | Preflight check + create Razorpay order |
+| `POST` | `/session/:token/confirm` | `{ orderId, paymentId, signature, amountPaise }` | Verify payment signature |
+| `POST` | `/session/:token/upload` | multipart: `files[]` + `configs[]` | Upload files, create job, record payment, dispatch to gateway |
+| `GET` | `/job/:jobId/status` | — | Poll job state (CREATED / PREFLIGHT_PENDING / PAYMENT_PENDING / PAID / DISPATCHED / QUEUED / PRINTING / COMPLETED / FAILED) |
 
 All responses: `{ ok: true, result: ... }` or `{ ok: false, error: { reason } }`.
 

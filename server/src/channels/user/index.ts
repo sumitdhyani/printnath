@@ -1,14 +1,16 @@
 import crypto from 'crypto';
+import { Readable } from 'stream';
 import type { Router } from 'express';
+import multer from 'multer';
 import {Methods} from './types'
-import type{ Out_Us, Out_Req, In_Resp, Contract, PrintDocument } from './types';
-import { ErrorDocument$ } from '@aws-sdk/client-s3';
+import type{ Out_Us, Out_Req, In_Resp, Contract, PrintDocument, JobDoc, PrintCfg } from './types';
 
 export type UserChannelDeps = {
   sendToRouter: (event: Out_Req | Out_Us) => Promise<In_Resp | void>;
   httpRouter: Router;
   sendOtp: (phone: string, otp: string) => Promise<void>;
   sessionTtlMs: number;
+  apiBaseUrl: string; // Base URL for artifact download, e.g. "http://localhost:3000"
 };
 
 export type UserChannel = {
@@ -17,6 +19,9 @@ export type UserChannel = {
 
 // In-memory OTP store. Keyed by phone number.
 const otpStore = new Map<string, { hash: string; expiresAt: number }>();
+// In-memory artifact auth tokens, keyed by jobId.
+// Validated by the router when a gateway downloads an artifact.
+export const artifactAuthTokens = new Map<string, { authToken: string; expiresAt: number }>();
 
 export async function initUserChannel(deps: UserChannelDeps): Promise<UserChannel> {
   // ── Config ──
@@ -379,10 +384,10 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
     const order = orderResp.result as Contract[typeof Methods.CreateOrder]['result'];
 
-    // Persist order info on session for upload-time verification
+    // Persist order info + checkout docs on session for upload-time verification
     await deps.sendToRouter({
       method: Methods.UpdateSessionMetadata,
-      args: { sessionId: session.id, metadata: { orderId: order.orderId, amountPaise: order.amountPaise } },
+      args: { sessionId: session.id, metadata: { orderId: order.orderId, amountPaise: order.amountPaise, checkoutDocs: documents } },
     }) as In_Resp;
 
     res.json({ ok: true, result: { orderId: order.orderId, amountPaise: order.amountPaise } });
@@ -450,11 +455,229 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
     res.json({ ok: true, result: { verified: true } });
   });
 
+  // ══════════════════════════════════════════════════════════════
+  // Multer setup for file uploads
+  // ══════════════════════════════════════════════════════════════
+
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024, files: 10 },
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // UploadDocument (Post-Payment)
+  // ══════════════════════════════════════════════════════════════
+
+  deps.httpRouter.post('/session/:token/upload', upload.fields([
+    { name: 'files', maxCount: 10 },
+    { name: 'configs', maxCount: 10 },
+  ]), async (req, res) => {
+    const { token } = req.params;
+
+    try {
+      const files = (req as any).files?.files as Express.Multer.File[] | undefined;
+      const configsRaw = (req.body as Record<string, unknown>).configs;
+
+      if (!files || files.length === 0) {
+        return res.status(400).json({ ok: false, error: { reason: 'No files uploaded' } });
+      }
+
+      if (!Array.isArray(configsRaw) || configsRaw.length === 0) {
+        return res.status(400).json({ ok: false, error: { reason: 'Missing configs' } });
+      }
+      const configStrings = configsRaw as string[];
+
+      if (configStrings.length !== files.length) {
+        return res.status(400).json({ ok: false, error: { reason: `Expected ${files.length} configs, got ${configStrings.length}` } });
+      }
+
+      // Resolve session
+      const sessionResp = await deps.sendToRouter({
+        method: Methods.GetSessionByToken,
+        args: { token },
+      }) as In_Resp;
+
+      if (!sessionResp.ok || !sessionResp.result) {
+        return res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
+      }
+      const session = sessionResp.result as NonNullable<Contract[typeof Methods.GetSessionByToken]['result']>;
+
+      // Verify payment was confirmed
+      const meta = (session.metadata ?? {}) as Record<string, unknown>;
+      if (!meta.paymentId || !meta.verifiedAt) {
+        return res.status(400).json({ ok: false, error: { reason: 'Payment not confirmed' } });
+      }
+      const storedAmountPaise = meta.amountPaise as number | undefined;
+      if (!storedAmountPaise || storedAmountPaise <= 0) {
+        return res.status(400).json({ ok: false, error: { reason: 'Invalid stored amount' } });
+      }
+
+      // Verify uploaded configs match checkout docs (integrity check)
+      const checkoutDocs = meta.checkoutDocs as PrintDocument[] | undefined;
+      if (Array.isArray(checkoutDocs) && checkoutDocs.length === configStrings.length) {
+        for (let i = 0; i < configStrings.length; i++) {
+          let cfg: PrintCfg;
+          try { cfg = JSON.parse(configStrings[i]); } catch {
+            return res.status(400).json({ ok: false, error: { reason: `Invalid config JSON for file ${i}` } });
+          }
+          const chk = checkoutDocs[i];
+          if (cfg.pageCount !== chk.pageCount || cfg.copies !== chk.copies ||
+              cfg.color !== chk.color || cfg.duplex !== chk.duplex ||
+              cfg.paperSize !== chk.paperSize) {
+            return res.status(400).json({ ok: false, error: { reason: `Config mismatch at index ${i}` } });
+          }
+        }
+      } else {
+        return res.status(400).json({ ok: false, error: { reason: 'Uploaded docs count mismatches checkout quote' } });
+      }
+
+      // Store each file + create document record
+      const jobDocs: JobDoc[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        let cfg: PrintCfg;
+        try { cfg = JSON.parse(configStrings[i]); } catch {
+          return res.status(400).json({ ok: false, error: { reason: `Invalid config JSON for ${file.originalname}` } });
+        }
+        const storageId = crypto.randomUUID();
+
+        const storeResp = await deps.sendToRouter({
+          method: Methods.StoreArtifact,
+          args: {
+            jobId: storageId,
+            body: Readable.from(file.buffer),
+            contentType: file.mimetype,
+            contentLength: file.size,
+          },
+        }) as In_Resp;
+
+        if (!storeResp.ok) {
+          return res.status(500).json({ ok: false, error: { reason: `Failed to store ${file.originalname}` } });
+        }
+        const { storageKey } = storeResp.result as { storageKey: string };
+
+        const docResp = await deps.sendToRouter({
+          method: Methods.CreateDocument,
+          args: {
+            sessionToken: token,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            storageKey,
+            source: 'phone_upload',
+            fileSize: file.size,
+            pageCount: cfg.pageCount,
+          },
+        }) as In_Resp;
+
+        if (!docResp.ok) {
+          return res.status(500).json({ ok: false, error: { reason: `Failed to create document record for ${file.originalname}` } });
+        }
+        const { id: docId } = docResp.result as { id: string };
+        jobDocs.push({
+          documentId: docId,
+          pageCount: cfg.pageCount,
+          copies: cfg.copies,
+          color: cfg.color,
+          duplex: cfg.duplex,
+          paperSize: cfg.paperSize,
+          pricePaise: cfg.pricePaise,
+        });
+      }
+
+      // Create print job
+      const totalPages = jobDocs.reduce((sum, d) => sum + d.pageCount * d.copies, 0);
+      const totalPricePaise = jobDocs.reduce((sum, d) => sum + d.pricePaise, 0);
+      const jobNumber = `JOB-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+
+      const jobResp = await deps.sendToRouter({
+        method: Methods.CreatePrintJob,
+        args: {
+          jobNumber,
+          gatewayId: session.gatewayId,
+          sessionId: session.id,
+          totalPages,
+          pricePaise: totalPricePaise,
+          documents: jobDocs,
+        },
+      }) as In_Resp;
+
+      if (!jobResp.ok) {
+        return res.status(500).json({ ok: false, error: { reason: jobResp.error.reason } });
+      }
+      const { id: jobId } = jobResp.result as { id: string; jobNumber: string };
+
+      // Record payment
+      const payResp = await deps.sendToRouter({
+        method: Methods.CreatePayment,
+        args: { jobId, amountPaise: storedAmountPaise, provider: 'razorpay' },
+      }) as In_Resp;
+
+      if (!payResp.ok) {
+        console.error(`Failed to record payment for job ${jobId}: ${payResp.error.reason}`);
+      }
+
+      // Generate auth token for artifact download
+      const authToken = crypto.randomUUID();
+      artifactAuthTokens.set(jobId, { authToken, expiresAt: Date.now() + 60 * 60 * 1000 });
+
+      // Dispatch to gateway
+      const artifactUrl = `${deps.apiBaseUrl}/api/gateway/jobs/${jobId}/artifact`;
+      const dispatchResp = await deps.sendToRouter({
+        method: Methods.RequestPrint,
+        args: {
+          deviceId: session.gatewayId,
+          jobId,
+          artifactUrl,
+          authToken,
+          documents: jobDocs.map(d => ({
+            pageCount: d.pageCount, copies: d.copies, color: d.color,
+            duplex: d.duplex, paperSize: d.paperSize, pricePaise: d.pricePaise,
+          })),
+        },
+      }) as In_Resp;
+
+      if (!dispatchResp.ok) {
+        console.error(`Failed to dispatch job ${jobNumber}: ${dispatchResp.error.reason}`);
+      }
+
+      res.json({ ok: true, result: { jobId, jobNumber } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ ok: false, error: { reason: message } });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // GetJobStatus
+  // ══════════════════════════════════════════════════════════════
+
+  deps.httpRouter.get('/job/:jobId/status', async (req, res) => {
+    const { jobId } = req.params;
+
+    const resp = await deps.sendToRouter({
+      method: Methods.GetPrintJob,
+      args: { id: jobId },
+    }) as In_Resp;
+
+    if (!resp.ok) {
+      return res.status(404).json({ ok: false, error: { reason: 'Job not found' } });
+    }
+
+    const job = resp.result as { id: string; state: string } | null;
+    if (!job) {
+      return res.status(404).json({ ok: false, error: { reason: 'Job not found' } });
+    }
+
+    res.json({ ok: true, result: { jobId: job.id, state: job.state } });
+  });
+
   // ── Public API ──
 
   return {
     stop: async () => {
       otpStore.clear();
+      artifactAuthTokens.clear();
     },
   };
 }
