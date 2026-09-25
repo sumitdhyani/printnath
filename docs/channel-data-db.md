@@ -35,7 +35,7 @@ type DataDbChannel = {
 | `updateGatewayState` | `{ deviceId, lifecycleState, isConnected?, deviceToken? }` | Transition lifecycle |
 | `updateGatewayCapabilities` | `{ deviceId, capabilities }` | Store printer capabilities |
 | `listGatewaysByOwner` | `{ ownerPhone }` | All gateways for an owner |
-| `setPricing` | `{ ownerPhone, pageType, pricePaise }` | Upsert page pricing |
+| `setPricing` | `{ ownerPhone, pageType, pricePaise }` | Upsert page pricing. `pageType` is colon-separated positional format: `PageColor_BW:PageDuplex_SINGLE:PaperSize_A4`. Each part is prefixed with dimension name for self-describing values. Missing trailing parts default: `PageColor_BW::` → `PageColor_BW:PageDuplex_SINGLE:PaperSize_A4` |
 | `getPricingByOwner` | `{ ownerPhone }` | All pricing for owner |
 | `createSession` | `{ gatewayId, sessionToken, mode, expiresAt }` | New customer session |
 | `getSessionByToken` | `{ token }` | Lookup session |
@@ -82,6 +82,31 @@ Every successful response includes `method` matching the request and `ok: true` 
 | `updatePaymentStatus` | `Payment` |
 | `auditLog` | `null` |
 | `ping` | `null` |
+
+### pageType Format
+
+`pageType` uses a colon-separated positional format where each segment describes one pricing dimension. The format is self-describing — each value is prefixed with its dimension name to prevent positional collision.
+
+**Format:** `PageColor_DIMENSION:PageDuplex_DIMENSION:PaperSize_DIMENSION`
+
+| Position | Allowed Values | Default |
+|---|---|---|
+| 1 — PageColor | `PageColor_BW` / `PageColor_COLOR` | `PageColor_BW` |
+| 2 — PageDuplex | `PageDuplex_SINGLE` / `PageDuplex_DUPLEX` | `PageDuplex_SINGLE` |
+| 3 — PaperSize | `PaperSize_A4` / `PaperSize_A3` / `PaperSize_A5` / `PaperSize_LETTER` / `PaperSize_LEGAL` | `PaperSize_A4` |
+
+**Examples:**
+```
+"PageColor_BW:PageDuplex_SINGLE:PaperSize_A4"     → B&W, single-sided, A4
+"PageColor_COLOR:PageDuplex_SINGLE:PaperSize_A3"   → Color, single-sided, A3
+"PageColor_BW:PageDuplex_DUPLEX"                    → B&W, double-sided, A4 (default)
+```
+
+Missing trailing parts are filled with defaults. All 3 parts must be non-empty.
+
+**Internal storage:** These values are stored as separate Prisma enum columns (`color`, `duplex`, `paperSize`) with a unique constraint on `[ownerPhone, color, duplex, paperSize]`. The `pageType` string is reconstructed on read.
+
+**New dimensions:** Added by appending a new position at the end. Old records get defaults for the new dimension.
 
 ## Dependencies
 

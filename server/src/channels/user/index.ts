@@ -154,16 +154,15 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
   // SetShopPricing
   // ══════════════════════════════════════════════════════════════
   //
-  // Shop owner sets per-configuration prices. The composite key
-  // is built from { pageType, paperSize, duplex } and stored as
-  // a flat pageType string via data-db's setPricing.
+  // pageType uses colon-separated positional dimensions:
+  // "Color_BW:Duplex_Single:Size_A4". Data-db channel parses
+  // and applies defaults for missing trailing values.
 
-  async function setShopPricing(ownerPhone: string, prices: { pageType: string; paperSize: string; duplex: boolean; pricePaise: number }[]): Promise<void> {
+  async function setShopPricing(ownerPhone: string, prices: { pageType: string; pricePaise: number }[]): Promise<void> {
     for (const item of prices) {
-      const compositeKey = `${item.pageType}|${item.duplex ? 'duplex' : 'single'}|${item.paperSize}`;
       const resp = await deps.sendToRouter({
         method: Methods.SetPricing,
-        args: { ownerPhone, pageType: compositeKey, pricePaise: item.pricePaise },
+        args: { ownerPhone, pageType: item.pageType, pricePaise: item.pricePaise },
       }) as In_Resp;
       if (!resp.ok) {
         throw new Error(resp.error.reason);
@@ -177,7 +176,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
   deps.httpRouter.post('/owner/:phone/pricing', async (req, res) => {
     const { phone } = req.params;
-    const { prices } = req.body as { prices?: { pageType: string; paperSize: string; duplex: boolean; pricePaise: number }[] };
+    const { prices } = req.body as { prices?: { pageType: string; pricePaise: number }[] };
 
     if (!prices || !Array.isArray(prices)) {
       res.status(400).json({ error: 'Missing prices array' });

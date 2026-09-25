@@ -151,11 +151,11 @@ describe('Pricing', () => {
     await channel.execute({ method: Methods.CreateOwner, args: { phone: '+911234567890' } });
     await channel.execute({
       method: Methods.SetPricing,
-      args: { ownerPhone: '+911234567890', pageType: 'B_W_A4', pricePaise: 300 },
+      args: { ownerPhone: '+911234567890', pageType: 'PageColor_BW:PageDuplex_SINGLE:PaperSize_A4', pricePaise: 300 },
     });
     await channel.execute({
       method: Methods.SetPricing,
-      args: { ownerPhone: '+911234567890', pageType: 'COLOR_A4', pricePaise: 1000 },
+      args: { ownerPhone: '+911234567890', pageType: 'PageColor_BW:PageDuplex_SINGLE:PaperSize_A3', pricePaise: 1000 },
     });
 
     const result = await channel.execute({

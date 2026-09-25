@@ -7,6 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Enums for pricing/commission parameters ──
+
+enum PageColor {
+  PageColor_BW
+  PageColor_COLOR
+}
+
+enum PageDuplex {
+  PageDuplex_SINGLE
+  PageDuplex_DUPLEX
+}
+
+enum PaperSize {
+  PaperSize_A4
+  PaperSize_A3
+  PaperSize_A5
+  PaperSize_LETTER
+  PaperSize_LEGAL
+}
+
 // ── Device owner (shopkeeper, hostel warden, etc.) ──
 
 model Owner {
@@ -43,16 +63,18 @@ model Gateway {
 // ── Owner pricing (linked to owner phone, not gateway) ──
 
 model Pricing {
-  id         String   @id @default(uuid())
+  id         String     @id @default(uuid())
   ownerPhone String
-  owner      Owner    @relation(fields: [ownerPhone], references: [phone])
-  pageType   String               // B_W_A4 | COLOR_A4 | B_W_A3 | COLOR_A3
+  owner      Owner      @relation(fields: [ownerPhone], references: [phone])
+  color      PageColor  @default(PageColor_BW)
+  duplex     PageDuplex @default(PageDuplex_SINGLE)
+  paperSize  PaperSize  @default(PaperSize_A4)
   pricePaise Int
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
-  @@unique([ownerPhone, pageType])
+  @@unique([ownerPhone, color, duplex, paperSize])
 }
 
 // ── Customer session (browser flow) ──

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type PageColor, type PageDuplex, type PaperSize } from '@prisma/client';
 import { In_Req, Out_Resp } from './types';
 import { Methods } from '../../shared/contracts/protocol';
 
@@ -17,6 +17,21 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
 
   async function execute(req: In_Req): Promise<Out_Resp> {
     const r = req as any; // TS can't narrow imported Methods in switch
+
+    // ── Pricing helpers (hoisted to function scope, avoid TDZ in switch) ──
+    function parsePageType(s: string): { color: string; duplex: string; paperSize: string } {
+      const minParts: number = 3;
+      const parts = s.split(':');
+      if (parts.length < minParts || parts.filter((part) => part.length === 0).length) {
+        throw new Error(`Invalid price param: ${s}, should have atleast ${minParts} parts and all parts should be non-empty`);
+      }
+      return { color: parts[0], duplex: parts[1], paperSize: parts[2] };
+    }
+
+    function joinPageType(data: { color: string; duplex: string; paperSize: string }): string {
+      return [data.color, data.duplex, data.paperSize].join(':');
+    }
+
     try {
       switch (r.method) {
         // ── Owner ──
@@ -68,21 +83,40 @@ export async function initDataDb(deps: DataDbDeps): Promise<DataDbChannel> {
         }
 
         // ── Pricing ──
+
         case Methods.SetPricing: {
+          const parsed = parsePageType(r.args.pageType);
           const data = await prisma.pricing.upsert({
-            where: { ownerPhone_pageType: { ownerPhone: r.args.ownerPhone, pageType: r.args.pageType } },
+            where: {
+              ownerPhone_color_duplex_paperSize: {
+                ownerPhone: r.args.ownerPhone,
+                color: parsed.color as PageColor,
+                duplex: parsed.duplex as PageDuplex,
+                paperSize: parsed.paperSize as PaperSize,
+              },
+            },
             create: {
               ownerPhone: r.args.ownerPhone,
-              pageType: r.args.pageType,
+              color: parsed.color as PageColor,
+              duplex: parsed.duplex as PageDuplex,
+              paperSize: parsed.paperSize as PaperSize,
               pricePaise: r.args.pricePaise,
             },
             update: { pricePaise: r.args.pricePaise },
           });
-          return { method: Methods.SetPricing, ok: true, result: data };
+          return {
+            method: Methods.SetPricing,
+            ok: true,
+            result: { ownerPhone: data.ownerPhone, pageType: joinPageType(data), pricePaise: data.pricePaise },
+          };
         }
         case Methods.GetPricingByOwner: {
           const data = await prisma.pricing.findMany({ where: { ownerPhone: r.args.ownerPhone, isActive: true } });
-          return { method: Methods.GetPricingByOwner, ok: true, result: data };
+          return {
+            method: Methods.GetPricingByOwner,
+            ok: true,
+            result: data.map(d => ({ ownerPhone: d.ownerPhone, pageType: joinPageType(d), pricePaise: d.pricePaise })),
+          };
         }
 
         // ── Session ──
