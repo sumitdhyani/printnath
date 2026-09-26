@@ -93,6 +93,17 @@ Tests run against a real PostgreSQL database (`printnath_test`). Setup creates i
 
 See [Test Setup Documentation](docs/channel-test-setup.md) for execution order, file structure, and troubleshooting.
 
+Each test file includes ASCII flow diagrams before each test describing the data flow.
+Per-channel flow diagram references are also collected in `test_flow_diagrams.md` files:
+
+| Channel | Test directory | Flow diagrams |
+|---|---|---|
+| Data DB | [channel-tests/data-db](channel-tests/data-db) | [test_flow_diagrams.md](channel-tests/data-db/test_flow_diagrams.md) |
+| Server Gateway | [channel-tests/gateway](channel-tests/gateway) | [test_flow_diagrams.md](channel-tests/gateway/test_flow_diagrams.md) |
+| Doc Store | [channel-tests/doc-store](channel-tests/doc-store) | [test_flow_diagrams.md](channel-tests/doc-store/test_flow_diagrams.md) |
+| Payment | [channel-tests/payment](channel-tests/payment) | [test_flow_diagrams.md](channel-tests/payment/test_flow_diagrams.md) |
+| User Channel | [channel-tests/user](channel-tests/user) | [test_flow_diagrams.md](channel-tests/user/test_flow_diagrams.md) |
+
 **Run all channel tests:**
 ```sh
 npx vitest run --config channel-tests/vitest.config.ts
@@ -128,7 +139,7 @@ Each channel has a contract document describing its in/out types, dependencies, 
 | Server Gateway | [channel-server-gwy.md](docs/channel-server-gwy.md) | ✅ Built, tested |
 | Doc Store | — | ✅ Built, tested |
 | Payment | [channel-payment.md](docs/channel-payment.md) | ✅ Built, tested |
-| User Channel | [channel-user.md](docs/channel-user.md) | 📄 Designed |
+| User Channel | [channel-user.md](docs/channel-user.md) | ✅ Built, tested |
 
 ## Project Structure
 
