@@ -281,9 +281,8 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
       args: { token },
     }) as In_Resp;
 
-    if (!resp.ok) {
-      res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
-      return;
+    if (!resp.ok || !resp.result) {
+      return res.status(404).json({ ok: false, error: { reason: 'Session not found' } });
     }
 
     const result = resp.result as Contract[typeof Methods.GetSessionByToken]['result'];
@@ -469,26 +468,54 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
   deps.httpRouter.post('/session/:token/upload', upload.fields([
     { name: 'files', maxCount: 10 },
-    { name: 'configs', maxCount: 10 },
+    { name: 'configs', maxCount: 1 },
   ]), async (req, res) => {
     const { token } = req.params;
 
     try {
       const files = (req as any).files?.files as Express.Multer.File[] | undefined;
-      const configsRaw = (req.body as Record<string, unknown>).configs;
+      // The string representation of the print config array
+      const configsRaw = (req.body as Record<string, unknown>).configs as string;
 
       if (!files || files.length === 0) {
         return res.status(400).json({ ok: false, error: { reason: 'No files uploaded' } });
       }
 
-      if (!Array.isArray(configsRaw) || configsRaw.length === 0) {
+      if (!configsRaw || configsRaw.length === 0) {
         return res.status(400).json({ ok: false, error: { reason: 'Missing configs' } });
       }
-      const configStrings = configsRaw as string[];
+      
+      const printCfgs: PrintCfg[] = []
+      try{
+        const configs = JSON.parse(configsRaw);
+        if (!Array.isArray(configs) || configs.length !== files.length) throw new Error();
 
-      if (configStrings.length !== files.length) {
-        return res.status(400).json({ ok: false, error: { reason: `Expected ${files.length} configs, got ${configStrings.length}` } });
+        //pageCount: 2, copies: 1, color: false, duplex: true, paperSize: 'A4', pricePaise: 600 }
+        for(const config of configs) {
+            const pageCount: number   = config.pageCount;
+            const copies: number      = config.copies;
+            const color: boolean      = config.colon
+            const duplex: boolean     = config.duplex
+            const paperSize: string   = config.paperSize
+            const pricePaise: number  = config.pricePaise
+            if (pageCount &&
+                copies &&
+                color &&
+                duplex &&
+                paperSize &&
+                pricePaise)
+            {
+                throw new Error();
+            }
+            printCfgs.push({pageCount, color, copies, duplex, paperSize, pricePaise});
+        }
+      } catch{
+        return res.status(400).json({ ok: false, error: { reason: `Invalid config JSON or missing fields or file no. and num config mismatch(no. of files files: ${files.length}): ${configsRaw}` } });
       }
+
+      
+
+       
 
       // Resolve session
       const sessionResp = await deps.sendToRouter({
@@ -513,12 +540,9 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
       // Verify uploaded configs match checkout docs (integrity check)
       const checkoutDocs = meta.checkoutDocs as PrintDocument[] | undefined;
-      if (Array.isArray(checkoutDocs) && checkoutDocs.length === configStrings.length) {
-        for (let i = 0; i < configStrings.length; i++) {
-          let cfg: PrintCfg;
-          try { cfg = JSON.parse(configStrings[i]); } catch {
-            return res.status(400).json({ ok: false, error: { reason: `Invalid config JSON for file ${i}` } });
-          }
+      if (Array.isArray(checkoutDocs) && checkoutDocs.length === printCfgs.length) {
+        for (let i = 0; i < printCfgs.length; i++) {
+          let cfg: PrintCfg = printCfgs[i];
           const chk = checkoutDocs[i];
           if (cfg.pageCount !== chk.pageCount || cfg.copies !== chk.copies ||
               cfg.color !== chk.color || cfg.duplex !== chk.duplex ||
@@ -535,10 +559,7 @@ export async function initUserChannel(deps: UserChannelDeps): Promise<UserChanne
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        let cfg: PrintCfg;
-        try { cfg = JSON.parse(configStrings[i]); } catch {
-          return res.status(400).json({ ok: false, error: { reason: `Invalid config JSON for ${file.originalname}` } });
-        }
+        let cfg: PrintCfg = printCfgs[i];
         const storageId = crypto.randomUUID();
 
         const storeResp = await deps.sendToRouter({
